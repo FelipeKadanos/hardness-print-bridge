@@ -14,26 +14,11 @@
 
 ## Visão rápida
 
-O **Hardness Print Bridge** conecta o Hardness às impressoras do cliente sem depender de navegador.
-
-Fluxo principal:
+O **Hardness Print Bridge** conecta o Hardness às impressoras do cliente via fila local:
 
 `inbox -> processing -> printed/error`
 
-## Stack atual
-
-- C# / .NET 10 (Worker Service)
-- Serilog (console + arquivo com rotação diária)
-- Config via `appsettings.json` + `appsettings.Development.json` + `appsettings.Local.json`
-
 ## Setup rápido
-
-Pré-requisitos:
-
-- Windows
-- .NET SDK 10 instalado
-
-Clone e execução:
 
 ```powershell
 git clone <url-do-repo>
@@ -45,22 +30,52 @@ dotnet run --project src/Hardness.PrintBridge.Agent
 
 ## Configuração local
 
-O arquivo local não é versionado. Após clonar, crie assim:
-
 ```powershell
 Copy-Item src/Hardness.PrintBridge.Agent/appsettings.Local.example.json src/Hardness.PrintBridge.Agent/appsettings.Local.json
 ```
 
-Depois ajuste no `appsettings.Local.json`:
+Ajuste no `appsettings.Local.json`:
 
-- paths de fila (`WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`)
+- `WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`
 - `DefaultPrinterName`
-- `HardnessCallbackUrl` e `HardnessCallbackToken` (se aplicável)
+- `HardnessCallbackUrl`, `HardnessCallbackToken` (se aplicável)
 
-Arquivos:
+## Publicação (Release)
 
-- versionado: `src/Hardness.PrintBridge.Agent/appsettings.Local.example.json`
-- local (ignorado): `src/Hardness.PrintBridge.Agent/appsettings.Local.json`
+```powershell
+dotnet publish src/Hardness.PrintBridge.Agent/Hardness.PrintBridge.Agent.csproj -c Release -o .\publish
+```
+
+## Instalação como Windows Service
+
+Executar PowerShell como Administrador:
+
+```powershell
+.\scripts\install-service.ps1 -ExecutablePath .\publish\Hardness.PrintBridge.Agent.exe
+```
+
+Remover serviço:
+
+```powershell
+.\scripts\uninstall-service.ps1
+```
+
+Comandos úteis:
+
+```powershell
+Get-Service HardnessPrintBridgeAgent
+Start-Service HardnessPrintBridgeAgent
+Stop-Service HardnessPrintBridgeAgent
+Restart-Service HardnessPrintBridgeAgent
+```
+
+## Permissões recomendadas da conta do serviço
+
+A conta que executa o serviço precisa de:
+
+- leitura/escrita em `WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`
+- leitura/escrita em `logs/` (ou no diretório de log configurado)
+- acesso às impressoras alvo no Windows
 
 ## Estrutura
 
@@ -71,26 +86,14 @@ src/
     Domain/
     Application/
     Infrastructure/
-      Queue/
-      Printing/
       Callback/
+      Printing/
 ```
-
-## Roadmap
-
-- [x] Fase 0: base do projeto, config, validação e logging
-- [ ] Fase 1: núcleo da fila (`inbox -> processing -> printed/error`)
-- [ ] Fase 2: parser `.etq`, resolução de impressora e impressão RAW
-- [ ] Fase 3: callback HTTP com retry
-- [ ] Fase 4: resiliência e retomada
-- [ ] Fase 5: empacotamento como Windows Service
-- [ ] Fase 6: testes de aceite
 
 ## Status
 
-Projeto em desenvolvimento do MVP, com bootstrap e base técnica prontos.
-
-Documentos de referência:
+Fases 0 a 5 implementadas no backlog técnico.  
+Referências:
 
 - [mvp_servico_impressao.md](./mvp_servico_impressao.md)
 - [backlog.md](./backlog.md)

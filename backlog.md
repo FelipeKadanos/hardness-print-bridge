@@ -32,10 +32,10 @@
 - [x] Implementar health logs de ciclo (polling ativo, contagem processada, falhas).
 
 ## Fase 5 — Serviço Windows e entrega
-- [ ] Empacotar para execução como Windows Service com auto-start.
-- [ ] Criar script de instalação/remoção do serviço.
-- [ ] Documentar configuração de diretórios e permissões da conta do serviço.
-- [ ] Documentar procedimento de operação e troubleshooting básico.
+- [x] Empacotar para execução como Windows Service com auto-start.
+- [x] Criar script de instalação/remoção do serviço.
+- [x] Documentar configuração de diretórios e permissões da conta do serviço.
+- [x] Documentar procedimento de operação e troubleshooting básico.
 
 ## Fase 6 — Testes de aceite do MVP
 - [ ] Teste: `.etq` válido sem impressora especificada -> imprime na padrão + `printed` + callback success.
