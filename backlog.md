@@ -38,9 +38,9 @@
 - [x] Documentar procedimento de operação e troubleshooting básico.
 
 ## Fase 6 — Testes de aceite do MVP
-- [ ] Teste: `.etq` válido sem impressora especificada -> imprime na padrão + `printed` + callback success.
-- [ ] Teste: `.etq` válido com impressora existente -> imprime na solicitada + `printed`.
-- [ ] Teste: impressora inexistente/offline -> `error` + callback error.
-- [ ] Teste: `.etq` inválido -> `error` + log + callback error.
-- [ ] Teste: restart do serviço sem perder pendências.
-- [ ] Teste: inicialização automática com Windows.
+- [x] Teste: `.etq` válido sem impressora especificada -> imprime na padrão + `printed` + callback success.
+- [x] Teste: `.etq` válido com impressora existente -> imprime na solicitada + `printed`.
+- [x] Teste: impressora inexistente/offline -> `error` + callback error.
+- [x] Teste: `.etq` inválido -> `error` + log + callback error.
+- [x] Teste: restart do serviço sem perder pendências.
+- [x] Teste: inicialização automática com Windows.

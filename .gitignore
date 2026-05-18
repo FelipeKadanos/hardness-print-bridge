@@ -3,6 +3,7 @@ bin/
 obj/
 out/
 publish/
+.tmp/
 
 # User-specific files
 *.user
