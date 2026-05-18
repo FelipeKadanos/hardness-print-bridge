@@ -7,10 +7,10 @@
 - [x] Estruturar logging (console + arquivo com rotação).
 
 ## Fase 1 — Núcleo da fila
-- [ ] Implementar scanner/poller da `inbox` com intervalo configurável.
-- [ ] Implementar `move` atômico `inbox -> processing` antes de qualquer leitura.
-- [ ] Implementar controle de idempotência por nome de arquivo (evitar reimpressão).
-- [ ] Implementar movimentação final para `printed` e `error`.
+- [x] Implementar scanner/poller da `inbox` com intervalo configurável.
+- [x] Implementar `move` atômico `inbox -> processing` antes de qualquer leitura.
+- [x] Implementar controle de idempotência por nome de arquivo (evitar reimpressão).
+- [x] Implementar movimentação final para `printed` e `error`.
 
 ## Fase 2 — Domínio de impressão
 - [ ] Definir contrato interno de `PrintJob` (arquivo, conteúdo, impressora solicitada, metadados).
