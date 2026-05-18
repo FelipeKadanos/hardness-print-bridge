@@ -26,10 +26,10 @@
 - [x] Implementar retry simples de callback (ex.: 3 tentativas com backoff curto) sem reimprimir.
 
 ## Fase 4 — Resiliência operacional
-- [ ] Garantir retomada segura após restart (processar pendentes em `processing`).
-- [ ] Criar política para arquivo inválido (`error` + log + callback).
-- [ ] Garantir que falha de callback não altere resultado da impressão (estado de impressão prevalece).
-- [ ] Implementar health logs de ciclo (polling ativo, contagem processada, falhas).
+- [x] Garantir retomada segura após restart (processar pendentes em `processing`).
+- [x] Criar política para arquivo inválido (`error` + log + callback).
+- [x] Garantir que falha de callback não altere resultado da impressão (estado de impressão prevalece).
+- [x] Implementar health logs de ciclo (polling ativo, contagem processada, falhas).
 
 ## Fase 5 — Serviço Windows e entrega
 - [ ] Empacotar para execução como Windows Service com auto-start.

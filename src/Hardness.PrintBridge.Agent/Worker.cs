@@ -22,12 +22,31 @@ public class Worker(
             _options.WatchPath,
             _options.PollIntervalMs);
 
+        await RecoverProcessingQueueAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested) {
+            var cycleStartedAt = DateTimeOffset.Now;
+            var processedCount = 0;
+            var failedCount = 0;
+
             try {
-                await ProcessInboxBatchAsync(stoppingToken);
+                var processingResult = await ProcessProcessingBatchAsync(stoppingToken);
+                processedCount += processingResult.ProcessedCount;
+                failedCount += processingResult.FailedCount;
+
+                var inboxResult = await ProcessInboxBatchAsync(stoppingToken);
+                processedCount += inboxResult.ProcessedCount;
+                failedCount += inboxResult.FailedCount;
             } catch (Exception ex) {
+                failedCount++;
                 logger.LogError(ex, "Unexpected error while processing queue batch.");
             }
+
+            logger.LogInformation(
+                "Queue cycle finished. StartedAt={StartedAt}, Processed={ProcessedCount}, Failed={FailedCount}.",
+                cycleStartedAt,
+                processedCount,
+                failedCount);
 
             await Task.Delay(_options.PollIntervalMs, stoppingToken);
         }
@@ -40,26 +59,71 @@ public class Worker(
         Directory.CreateDirectory(_options.ErrorPath);
     }
 
-    private async Task ProcessInboxBatchAsync(CancellationToken stoppingToken) {
+    private async Task<BatchResult> RecoverProcessingQueueAsync(CancellationToken stoppingToken) {
+        logger.LogInformation("Recovering pending files from processing folder.");
+        var recoveryResult = await ProcessProcessingBatchAsync(stoppingToken);
+        logger.LogInformation(
+            "Recovery finished. Processed={ProcessedCount}, Failed={FailedCount}.",
+            recoveryResult.ProcessedCount,
+            recoveryResult.FailedCount);
+        return recoveryResult;
+    }
+
+    private async Task<BatchResult> ProcessInboxBatchAsync(CancellationToken stoppingToken) {
         var files = Directory.GetFiles(_options.WatchPath, "*.etq", SearchOption.TopDirectoryOnly);
+        var result = new BatchResult();
 
         if (files.Length == 0) {
-            return;
+            return result;
         }
 
         logger.LogInformation("Found {FileCount} file(s) in inbox.", files.Length);
 
         foreach (var sourcePath in files) {
             stoppingToken.ThrowIfCancellationRequested();
-            await ProcessSingleFileAsync(sourcePath, stoppingToken);
+            var fileResult = await ProcessSingleFileAsync(sourcePath, sourcePathIsProcessingPath: false, stoppingToken);
+            result.ProcessedCount++;
+            if (!fileResult.Success) {
+                result.FailedCount++;
+            }
         }
+
+        return result;
     }
 
-    private async Task ProcessSingleFileAsync(string sourcePath, CancellationToken cancellationToken) {
+    private async Task<BatchResult> ProcessProcessingBatchAsync(CancellationToken stoppingToken) {
+        var files = Directory.GetFiles(_options.ProcessingPath, "*.etq", SearchOption.TopDirectoryOnly);
+        var result = new BatchResult();
+
+        if (files.Length == 0) {
+            return result;
+        }
+
+        logger.LogInformation("Found {FileCount} pending file(s) in processing.", files.Length);
+
+        foreach (var processingPath in files) {
+            stoppingToken.ThrowIfCancellationRequested();
+            var fileResult = await ProcessSingleFileAsync(processingPath, sourcePathIsProcessingPath: true, stoppingToken);
+            result.ProcessedCount++;
+            if (!fileResult.Success) {
+                result.FailedCount++;
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<FileResult> ProcessSingleFileAsync(
+        string sourcePath,
+        bool sourcePathIsProcessingPath,
+        CancellationToken cancellationToken) {
         var fileName = Path.GetFileName(sourcePath);
-        var processingPath = Path.Combine(_options.ProcessingPath, fileName);
+        var processingPath = sourcePathIsProcessingPath
+            ? sourcePath
+            : Path.Combine(_options.ProcessingPath, fileName);
         string? requestedPrinter = null;
         string? usedPrinter = null;
+        var fileResult = new FileResult();
 
         // Idempotence by filename: if already finalized, don't process again.
         if (AlreadyFinalized(fileName)) {
@@ -67,16 +131,20 @@ public class Worker(
                 "Skipping '{FileName}' because it already exists in printed or error.",
                 fileName);
             TryMoveDuplicateToError(sourcePath, fileName, "Duplicate filename already finalized.");
-            return;
+            fileResult.Success = false;
+            return fileResult;
         }
 
-        try {
-            // Atomic move inbox -> processing as queue lock.
-            File.Move(sourcePath, processingPath, overwrite: false);
-            logger.LogInformation("Moved '{FileName}' to processing.", fileName);
-        } catch (IOException ioEx) {
-            logger.LogWarning(ioEx, "Could not move '{FileName}' to processing. It may be in use.", fileName);
-            return;
+        if (!sourcePathIsProcessingPath) {
+            try {
+                // Atomic move inbox -> processing as queue lock.
+                File.Move(sourcePath, processingPath, overwrite: false);
+                logger.LogInformation("Moved '{FileName}' to processing.", fileName);
+            } catch (IOException ioEx) {
+                logger.LogWarning(ioEx, "Could not move '{FileName}' to processing. It may be in use.", fileName);
+                fileResult.Success = false;
+                return fileResult;
+            }
         }
 
         try {
@@ -104,6 +172,7 @@ public class Worker(
                 UsedPrinter = resolvedPrinter,
                 ErrorMessage = null
             }, cancellationToken);
+            fileResult.Success = true;
         } catch (PrinterResolutionException ex) {
             var errorPath = Path.Combine(_options.ErrorPath, fileName);
             SafeMoveToError(processingPath, errorPath);
@@ -115,6 +184,7 @@ public class Worker(
                 UsedPrinter = usedPrinter,
                 ErrorMessage = ex.Message
             }, cancellationToken);
+            fileResult.Success = false;
         } catch (InvalidDataException ex) {
             var errorPath = Path.Combine(_options.ErrorPath, fileName);
             SafeMoveToError(processingPath, errorPath);
@@ -126,6 +196,7 @@ public class Worker(
                 UsedPrinter = usedPrinter,
                 ErrorMessage = ex.Message
             }, cancellationToken);
+            fileResult.Success = false;
         } catch (PrintJobProcessingException ex) {
             var errorPath = Path.Combine(_options.ErrorPath, fileName);
             SafeMoveToError(processingPath, errorPath);
@@ -137,6 +208,7 @@ public class Worker(
                 UsedPrinter = usedPrinter,
                 ErrorMessage = ex.Message
             }, cancellationToken);
+            fileResult.Success = false;
         } catch (Exception ex) {
             var errorPath = Path.Combine(_options.ErrorPath, fileName);
             SafeMoveToError(processingPath, errorPath);
@@ -148,7 +220,10 @@ public class Worker(
                 UsedPrinter = usedPrinter,
                 ErrorMessage = ex.Message
             }, cancellationToken);
+            fileResult.Success = false;
         }
+
+        return fileResult;
     }
 
     private async Task NotifyCallbackSafeAsync(PrintCallbackRequest callbackRequest, CancellationToken cancellationToken) {
@@ -195,5 +270,14 @@ public class Worker(
                 currentPath,
                 errorPath);
         }
+    }
+
+    private sealed class BatchResult {
+        public int ProcessedCount { get; set; }
+        public int FailedCount { get; set; }
+    }
+
+    private sealed class FileResult {
+        public bool Success { get; set; }
     }
 }
