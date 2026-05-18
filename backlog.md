@@ -20,10 +20,10 @@
 - [x] Implementar tratamento de exceções de impressão com mensagens úteis.
 
 ## Fase 3 — Integração Hardness
-- [ ] Implementar cliente HTTP de callback (`success/error`).
-- [ ] Incluir autenticação por token no callback (se configurado).
-- [ ] Garantir payload mínimo: arquivo, status, impressora solicitada, utilizada, erro.
-- [ ] Implementar retry simples de callback (ex.: 3 tentativas com backoff curto) sem reimprimir.
+- [x] Implementar cliente HTTP de callback (`success/error`).
+- [x] Incluir autenticação por token no callback (se configurado).
+- [x] Garantir payload mínimo: arquivo, status, impressora solicitada, utilizada, erro.
+- [x] Implementar retry simples de callback (ex.: 3 tentativas com backoff curto) sem reimprimir.
 
 ## Fase 4 — Resiliência operacional
 - [ ] Garantir retomada segura após restart (processar pendentes em `processing`).
