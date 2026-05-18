@@ -245,14 +245,18 @@ public class Worker(
     }
 
     private void TryMoveDuplicateToError(string sourcePath, string fileName, string reason) {
-        var duplicateErrorPath = Path.Combine(_options.ErrorPath, fileName);
         try {
             if (!File.Exists(sourcePath)) {
                 return;
             }
 
+            var duplicateErrorPath = BuildUniqueErrorPath(fileName);
             File.Move(sourcePath, duplicateErrorPath, overwrite: false);
-            logger.LogWarning("Duplicate file '{FileName}' moved to error. Reason: {Reason}", fileName, reason);
+            logger.LogWarning(
+                "Duplicate file '{FileName}' moved to error as '{DuplicateFileName}'. Reason: {Reason}",
+                fileName,
+                Path.GetFileName(duplicateErrorPath),
+                reason);
         } catch (Exception ex) {
             logger.LogError(ex, "Failed to move duplicate file '{FileName}' to error.", fileName);
         }
@@ -270,6 +274,19 @@ public class Worker(
                 currentPath,
                 errorPath);
         }
+    }
+
+    private string BuildUniqueErrorPath(string fileName) {
+        var destinationPath = Path.Combine(_options.ErrorPath, fileName);
+        if (!File.Exists(destinationPath)) {
+            return destinationPath;
+        }
+
+        var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+        var extension = Path.GetExtension(fileName);
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
+        var uniqueFileName = $"{nameWithoutExtension}__duplicate-{stamp}{extension}";
+        return Path.Combine(_options.ErrorPath, uniqueFileName);
     }
 
     private sealed class BatchResult {

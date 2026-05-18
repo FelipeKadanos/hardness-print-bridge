@@ -7,6 +7,7 @@ using Serilog;
 using Hardness.PrintBridge.Agent;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 builder.Services
     .AddOptions<PrintBridgeOptions>()
