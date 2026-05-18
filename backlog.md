@@ -1,10 +1,10 @@
 # Backlog Técnico v0 — MVP Microserviço de Impressão
 
 ## Fase 0 — Base do projeto
-- [ ] Inicializar repositório do serviço Windows (estrutura de pastas e projeto).
-- [ ] Definir arquivo de configuração (`.env` ou `appsettings.json`) com todas as chaves do MVP.
-- [ ] Criar bootstrap da aplicação com leitura de config + validação de configuração obrigatória.
-- [ ] Estruturar logging (console + arquivo com rotação).
+- [x] Inicializar repositório do serviço Windows (estrutura de pastas e projeto).
+- [x] Definir arquivo de configuração (`.env` ou `appsettings.json`) com todas as chaves do MVP.
+- [x] Criar bootstrap da aplicação com leitura de config + validação de configuração obrigatória.
+- [x] Estruturar logging (console + arquivo com rotação).
 
 ## Fase 1 — Núcleo da fila
 - [ ] Implementar scanner/poller da `inbox` com intervalo configurável.
