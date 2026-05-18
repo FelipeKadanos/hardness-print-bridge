@@ -8,6 +8,9 @@ using Hardness.PrintBridge.Agent;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+builder.Services.AddWindowsService(options => {
+    options.ServiceName = "Hardness Print Bridge Agent";
+});
 
 builder.Services
     .AddOptions<PrintBridgeOptions>()
