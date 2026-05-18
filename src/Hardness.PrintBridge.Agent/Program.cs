@@ -1,4 +1,6 @@
+using Hardness.PrintBridge.Agent.Application;
 using Hardness.PrintBridge.Agent.Configuration;
+using Hardness.PrintBridge.Agent.Infrastructure.Printing;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Hardness.PrintBridge.Agent;
@@ -21,6 +23,9 @@ builder.Services.AddSerilog((services, configuration) => {
         .Enrich.FromLogContext();
 });
 
+builder.Services.AddSingleton<IPrintJobParser, EtqPrintJobParser>();
+builder.Services.AddSingleton<IPrinterResolver, WindowsPrinterResolver>();
+builder.Services.AddSingleton<IRawPrinterClient, WindowsRawPrinterClient>();
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

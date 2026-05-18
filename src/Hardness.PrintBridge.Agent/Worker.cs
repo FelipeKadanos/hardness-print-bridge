@@ -1,11 +1,16 @@
+using Hardness.PrintBridge.Agent.Application;
 using Hardness.PrintBridge.Agent.Configuration;
+using Hardness.PrintBridge.Agent.Infrastructure.Printing;
 using Microsoft.Extensions.Options;
 
 namespace Hardness.PrintBridge.Agent;
 
 public class Worker(
     ILogger<Worker> logger,
-    IOptions<PrintBridgeOptions> options) : BackgroundService {
+    IOptions<PrintBridgeOptions> options,
+    IPrintJobParser printJobParser,
+    IPrinterResolver printerResolver,
+    IRawPrinterClient rawPrinterClient) : BackgroundService {
     private readonly PrintBridgeOptions _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
@@ -72,14 +77,32 @@ public class Worker(
         }
 
         try {
-            var content = File.ReadAllText(processingPath).Trim();
-            if (string.IsNullOrWhiteSpace(content)) {
-                throw new InvalidDataException("ETQ payload is empty.");
-            }
+            var printJob = printJobParser.ParseEtq(processingPath);
+            var resolvedPrinter = printerResolver.Resolve(printJob);
+            rawPrinterClient.Print(resolvedPrinter, printJob.RawPayload, printJob.FileName);
+
+            logger.LogInformation(
+                "Printed '{FileName}' successfully. Requested printer: '{RequestedPrinter}', used printer: '{UsedPrinter}', payload bytes: {PayloadLength}.",
+                printJob.FileName,
+                printJob.RequestedPrinter ?? "(default)",
+                resolvedPrinter,
+                printJob.RawPayload.Length);
 
             var printedPath = Path.Combine(_options.PrintedPath, fileName);
             File.Move(processingPath, printedPath, overwrite: false);
             logger.LogInformation("File '{FileName}' processed and moved to printed.", fileName);
+        } catch (PrinterResolutionException ex) {
+            var errorPath = Path.Combine(_options.ErrorPath, fileName);
+            SafeMoveToError(processingPath, errorPath);
+            logger.LogError(ex, "Printer resolution failed for '{FileName}'.", fileName);
+        } catch (InvalidDataException ex) {
+            var errorPath = Path.Combine(_options.ErrorPath, fileName);
+            SafeMoveToError(processingPath, errorPath);
+            logger.LogError(ex, "Invalid ETQ payload for '{FileName}'.", fileName);
+        } catch (PrintJobProcessingException ex) {
+            var errorPath = Path.Combine(_options.ErrorPath, fileName);
+            SafeMoveToError(processingPath, errorPath);
+            logger.LogError(ex, "RAW printing failed for '{FileName}'.", fileName);
         } catch (Exception ex) {
             var errorPath = Path.Combine(_options.ErrorPath, fileName);
             SafeMoveToError(processingPath, errorPath);

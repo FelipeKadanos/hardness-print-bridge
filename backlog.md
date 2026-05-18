@@ -13,11 +13,11 @@
 - [x] Implementar movimentação final para `printed` e `error`.
 
 ## Fase 2 — Domínio de impressão
-- [ ] Definir contrato interno de `PrintJob` (arquivo, conteúdo, impressora solicitada, metadados).
-- [ ] Implementar parser `.etq` (string de números -> `byte[]`) com validações.
-- [ ] Implementar resolvedor de impressora (solicitada vs padrão, sem fallback silencioso).
-- [ ] Implementar adaptador de impressão RAW para Windows spooler.
-- [ ] Implementar tratamento de exceções de impressão com mensagens úteis.
+- [x] Definir contrato interno de `PrintJob` (arquivo, conteúdo, impressora solicitada, metadados).
+- [x] Implementar parser `.etq` (string de números -> `byte[]`) com validações.
+- [x] Implementar resolvedor de impressora (solicitada vs padrão, sem fallback silencioso).
+- [x] Implementar adaptador de impressão RAW para Windows spooler.
+- [x] Implementar tratamento de exceções de impressão com mensagens úteis.
 
 ## Fase 3 — Integração Hardness
 - [ ] Implementar cliente HTTP de callback (`success/error`).
