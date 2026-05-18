@@ -121,7 +121,7 @@ public class Worker(
         var processingPath = sourcePathIsProcessingPath
             ? sourcePath
             : Path.Combine(_options.ProcessingPath, fileName);
-        string? requestedPrinter = null;
+        string? requestedPrinter = TryExtractRequestedPrinter(fileName);
         string? usedPrinter = null;
         var fileResult = new FileResult();
 
@@ -149,7 +149,7 @@ public class Worker(
 
         try {
             var printJob = printJobParser.ParseEtq(processingPath);
-            requestedPrinter = printJob.RequestedPrinter;
+            requestedPrinter = printJob.RequestedPrinter ?? requestedPrinter;
             var resolvedPrinter = printerResolver.Resolve(printJob);
             usedPrinter = resolvedPrinter;
             rawPrinterClient.Print(resolvedPrinter, printJob.RawPayload, printJob.FileName);
@@ -287,6 +287,23 @@ public class Worker(
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
         var uniqueFileName = $"{nameWithoutExtension}__duplicate-{stamp}{extension}";
         return Path.Combine(_options.ErrorPath, uniqueFileName);
+    }
+
+    private static string? TryExtractRequestedPrinter(string fileName) {
+        const string marker = "__printer=";
+        var markerIndex = fileName.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0) {
+            return null;
+        }
+
+        var printerStart = markerIndex + marker.Length;
+        var extensionIndex = fileName.LastIndexOf('.');
+        if (extensionIndex <= printerStart) {
+            return null;
+        }
+
+        var extracted = fileName[printerStart..extensionIndex].Trim();
+        return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
     }
 
     private sealed class BatchResult {

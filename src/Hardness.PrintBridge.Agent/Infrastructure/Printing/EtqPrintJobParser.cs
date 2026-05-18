@@ -10,6 +10,7 @@ public sealed class EtqPrintJobParser : IPrintJobParser {
         }
 
         var fileName = Path.GetFileName(filePath);
+        var requestedPrinter = TryExtractRequestedPrinter(fileName);
         var content = File.ReadAllText(filePath).Trim();
         if (string.IsNullOrWhiteSpace(content)) {
             throw new InvalidDataException($"ETQ payload is empty for file '{fileName}'.");
@@ -26,8 +27,6 @@ public sealed class EtqPrintJobParser : IPrintJobParser {
 
             payload[i] = parsedByte;
         }
-
-        var requestedPrinter = TryExtractRequestedPrinter(fileName);
 
         return new PrintJob {
             FileName = fileName,
