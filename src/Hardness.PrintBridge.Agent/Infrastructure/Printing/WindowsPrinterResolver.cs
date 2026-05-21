@@ -60,7 +60,7 @@ public sealed class WindowsPrinterResolver(IOptions<PrintBridgeOptions> options)
 
             var isPaused = printerStatus == 7;
             var isOffline = workOffline || printerStatus == 8 || extendedStatus == 7;
-            var hasErrorState = detectedErrorState is >= 3 and <= 6;
+            var hasErrorState = detectedErrorState is >= 3 and <= 11;
 
             if (isPaused || isOffline || hasErrorState) {
                 throw new PrinterResolutionException(
