@@ -1,0 +1,8 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+# Keep opening braces on the same line for all C# constructs.
+csharp_new_line_before_open_brace = none
