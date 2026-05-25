@@ -44,3 +44,11 @@
 - [x] Teste: `.etq` inválido -> `error` + log + callback error.
 - [x] Teste: restart do serviço sem perder pendências.
 - [x] Teste: inicialização automática com Windows.
+
+## Fase 7 — Coleta remota por API dedicada
+- [x] Adicionar `RemoteJobFetcher` para listar e baixar `.etq` de endpoint HTTP.
+- [x] Integrar coleta remota no ciclo do worker antes do processamento local.
+- [x] Implementar deduplicação local por presença de arquivo e cache `remote-seen.json`.
+- [x] Implementar escrita atômica na `inbox` para arquivos baixados.
+- [x] Adicionar configuração remota (`Remote*`) e validações de startup.
+- [x] Adicionar observabilidade de ciclo remoto (baixados, ignorados, falhas, backoff).

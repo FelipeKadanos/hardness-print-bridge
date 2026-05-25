@@ -1,166 +1,94 @@
 # MVP Microserviço de Impressão (Ponte Hardness)
 
 ## 1) Objetivo
-Criar um microserviço local (Windows) que funcione como **ponte de impressão** entre o Hardness e impressoras instaladas no cliente.
+Criar um agente local Windows que faça a ponte entre Hardness e impressoras do cliente, com:
 
-Este MVP deve resolver:
-- Impressão automática sem depender de navegador.
-- Processamento robusto de fila.
-- Separação clara entre sucesso e erro.
-- Uso de impressora padrão configurada no agente.
-- Possibilidade de o Hardness solicitar impressão em impressora específica.
-- Retorno de status para o Hardness quando a impressão falhar.
+- impressão automática sem navegador
+- fila robusta com estados claros
+- callback de sucesso/erro para o Hardness
 
----
+## 2) Origem dos jobs (etapa atual)
 
-## 2) Decisões do MVP
+O agente suporta dois modos:
 
-### 2.1 Origem da fila
-**MVP v1: leitura por pasta compartilhada** (pull local), com metadados no arquivo/nome para roteamento.
+1. **Fila local (filesystem)**  
+   Lê `.etq` da `inbox` local/compartilhada.
 
-Pasta de entrada (ERP):  
-`dados_usuarios/{empresa}/tmp/impressao/`
+2. **Coleta remota via API dedicada (pull HTTP)**  
+   Busca lista de arquivos no servidor Hardness, baixa os `.etq`, salva na `inbox` local e processa no mesmo pipeline.
 
-Observação:
-- Endpoint HTTP de envio pode entrar no v2, se necessário.
-- No v1, a devolutiva de status para o Hardness será por callback HTTP (somente resultado), sem envio do conteúdo da impressão.
+Endpoints remotos (exemplo):
+- Listagem: `GET /api/rel/get/impressao_info?...`
+- Download: `GET /api/rel/get/impressao_arquivo?...&arquivo={fileName}`
 
-### 2.2 Formato do payload
-Manter formato atual do `.etq` do Hardness para etiquetas:
-- conteúdo em bytes representados por números separados por espaço;
-- o microserviço converte para `byte[]` e envia em modo RAW para impressora.
+## 3) Formato de payload
 
-Extensibilidade:
-- O agente deve ser preparado para outros tipos de impressão no futuro (ex.: texto bruto/PDF), mas no MVP a implementação obrigatória é `.etq` RAW.
-
-### 2.3 Estratégia de confirmação
-Após tentativa de impressão:
-- **Sucesso**: mover arquivo para `impresso/`.
-- **Falha**: mover arquivo para `erro/`.
-
-No MVP, além do estado do arquivo, o agente deve notificar o Hardness via callback HTTP:
-- `status=success` quando imprimir;
-- `status=error` quando falhar;
-- informar impressora solicitada, impressora utilizada e mensagem de erro.
-
-### 2.4 Seleção de impressora
-- O agente terá uma **impressora padrão** configurada.
-- O Hardness pode informar uma **impressora específica** por job.
-- Regra:
-  1. Se vier impressora no job, tentar essa impressora.
-  2. Se não vier, usar impressora padrão.
-  3. Se a impressora solicitada não existir/offline, marcar erro e retornar ao Hardness (sem fallback silencioso).
-
-### 2.5 Execução no cliente
-Rodar como **serviço Windows** (sem interface gráfica), com inicialização automática.
-
----
-
-## 3) Estrutura de diretórios (no cliente)
-
-Base local do serviço (exemplo):
-`C:\hardness\print-agent\`
-
-Subpastas:
-- `inbox\` (entrada monitorada; pode apontar para pasta compartilhada do ERP)
-- `processing\`
-- `printed\`
-- `error\`
-- `logs\`
-- `meta\` (opcional no MVP, para registrar metadados do job quando necessário)
-
-Observação:
-- Se a entrada for a pasta do ERP, o fluxo deve fazer move atômico para `processing` antes de imprimir.
-
----
+`.etq` com bytes numéricos separados por espaço.  
+O agente converte para `byte[]` e envia em RAW para spooler Windows.
 
 ## 4) Fluxo operacional
 
-1. Serviço varre `inbox` a cada N segundos (ex.: 2s).
-2. Para cada job de impressão:
-   - move para `processing`;
-   - lê conteúdo e metadados (incluindo impressora solicitada, se houver);
-   - resolve impressora (solicitada ou padrão);
-   - converte para bytes (caso `.etq`);
-   - envia para impressora.
-3. Se imprimir:
-   - move para `printed`;
-   - registra log de sucesso;
-   - envia callback de sucesso para o Hardness.
-4. Se falhar:
-   - move para `error`;
-   - registra motivo no log;
-   - envia callback de falha para o Hardness.
+1. (Opcional) coleta remota via API e grava arquivos novos na `inbox`.
+2. Move arquivo para `processing` (atômico).
+3. Faz parse `.etq` + resolve impressora (solicitada/padrão).
+4. Envia RAW para impressora.
+5. Sucesso: move para `printed` + callback `success`.
+6. Falha: move para `error` + callback `error`.
 
----
+## 5) Regras de consistência
 
-## 5) Regras de segurança e consistência
+- nunca imprimir direto da `inbox`
+- sempre passar por `processing`
+- não perder arquivo em erro
+- dedupe por nome/localização (`inbox/processing/printed/error`)
+- sem fallback silencioso de impressora
+- no modo remoto, usar cache local de vistos para evitar reingestão
 
-- Nunca imprimir arquivo direto da `inbox`.
-- Sempre mover para `processing` antes de processar (evita dupla execução).
-- Não apagar arquivo em caso de erro.
-- Garantir idempotência por nome de arquivo (não reimprimir o mesmo arquivo sem ação manual).
-- Se impressora especificada não for encontrada, não substituir automaticamente por padrão.
+## 6) Seleção de impressora
 
----
+1. se vier impressora no job, tentar ela
+2. se não vier, usar padrão
+3. se não existir/offline/paused/erro, job vai para `error`
 
-## 6) Logs mínimos obrigatórios
+## 7) Callback para Hardness
 
-Para cada arquivo:
-- timestamp;
-- nome do arquivo;
-- impressora solicitada;
-- impressora utilizada;
-- status final (`printed` ou `error`);
-- mensagem de erro (quando houver).
+Payload mínimo:
+- `file_name`
+- `status` (`success`/`error`)
+- `requested_printer`
+- `used_printer`
+- `error_message`
 
-Arquivo de log:
-- rotação diária ou por tamanho (definir na implementação).
+Com retry simples no envio HTTP.
 
----
+## 8) Configuração mínima
 
-## 7) Configuração do serviço (arquivo .env/.json)
+- `WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`
+- `DefaultPrinterName`
+- `PollIntervalMs`
+- `HardnessCallbackUrl`, `HardnessCallbackToken`
 
-Parâmetros mínimos:
-- `watch_path`
-- `processing_path`
-- `printed_path`
-- `error_path`
-- `printer_name`
-- `default_printer_name`
-- `poll_interval_ms`
-- `log_level`
-- `hardness_callback_url`
-- `hardness_callback_token` (se aplicável)
+Modo remoto:
+- `RemoteSourceEnabled`
+- `RemoteListUrl`
+- `RemoteDownloadUrlTemplate`
+- `RemotePollIntervalMs`
+- `RemoteTimeoutMs`
+- `RemoteMaxFilesPerCycle`
+- `RemoteAllowInsecureTls` (homolog)
+- `RemoteSeenCachePath`
 
----
+## 9) Critérios de aceite MVP
 
-## 8) Critérios de aceite do MVP
+1. `.etq` válido sem impressora específica -> `printed` + callback success
+2. `.etq` válido com impressora específica existente -> `printed` + callback success
+3. impressora inexistente/offline -> `error` + callback error
+4. `.etq` inválido -> `error` + callback error
+5. reinício do serviço recupera pendentes de `processing`
+6. serviço inicia com Windows
 
-1. Ao colocar um `.etq` válido na fila sem impressora especificada, ele imprime na padrão e vai para `printed`.
-2. Ao colocar um `.etq` válido com impressora especificada existente, imprime nessa impressora e vai para `printed`.
-3. Se a impressora especificada não existir/offline, o job vai para `error` e o Hardness recebe callback com falha.
-4. Ao colocar um `.etq` inválido, ele vai para `error` com log e callback explicando a falha.
-5. Reiniciar o serviço não causa perda de arquivos pendentes.
-6. Serviço sobe automaticamente com o Windows.
+## 10) Fora de escopo (MVP)
 
----
-
-## 9) Fora do escopo (MVP)
-
-- Painel web de administração.
-- API pública de impressão (entrada de jobs via HTTP).
-- Reprocessamento automático com política avançada.
-
----
-
-## 10) Próximo passo para codificação
-
-Com este MVP fechado, o próximo passo é criar o repositório com:
-- esqueleto do serviço;
-- módulo de watcher de arquivos;
-- módulo de roteamento de impressora (padrão vs especificada);
-- módulo de impressão RAW;
-- módulo de callback para Hardness;
-- módulo de logs e movimentação de fila;
-- arquivo de configuração e instruções de instalação como serviço Windows.
+- painel administrativo
+- entrada de jobs por API pública do agente (push direto do ERP)
+- políticas avançadas de reprocessamento

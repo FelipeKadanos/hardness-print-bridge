@@ -2,6 +2,7 @@ using Hardness.PrintBridge.Agent.Application;
 using Hardness.PrintBridge.Agent.Configuration;
 using Hardness.PrintBridge.Agent.Infrastructure.Callback;
 using Hardness.PrintBridge.Agent.Infrastructure.Printing;
+using Hardness.PrintBridge.Agent.Infrastructure.Queue;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Hardness.PrintBridge.Agent;
@@ -19,6 +20,12 @@ builder.Services
     .Validate(
         options => Uri.TryCreate(options.HardnessCallbackUrl, UriKind.Absolute, out _),
         "PrintBridge:HardnessCallbackUrl must be a valid absolute URL.")
+    .Validate(
+        options => !options.RemoteSourceEnabled || Uri.TryCreate(options.RemoteListUrl, UriKind.Absolute, out _),
+        "PrintBridge:RemoteListUrl must be a valid absolute URL when remote source is enabled.")
+    .Validate(
+        options => !options.RemoteSourceEnabled || !string.IsNullOrWhiteSpace(options.RemoteDownloadUrlTemplate),
+        "PrintBridge:RemoteDownloadUrlTemplate is required when remote source is enabled.")
     .ValidateOnStart();
 
 builder.Services.AddSerilog((services, configuration) => {
@@ -32,6 +39,24 @@ builder.Services.AddSingleton<IPrintJobParser, EtqPrintJobParser>();
 builder.Services.AddSingleton<IPrinterResolver, WindowsPrinterResolver>();
 builder.Services.AddSingleton<IRawPrinterClient, WindowsRawPrinterClient>();
 builder.Services.AddHttpClient<IHardnessCallbackClient, HardnessCallbackClient>();
+builder.Services
+    .AddHttpClient<IRemoteJobFetcher, RemoteJobFetcher>((serviceProvider, client) => {
+        var remoteOptions = serviceProvider
+            .GetRequiredService<IOptions<PrintBridgeOptions>>()
+            .Value;
+        client.Timeout = TimeSpan.FromMilliseconds(remoteOptions.RemoteTimeoutMs);
+    })
+    .ConfigurePrimaryHttpMessageHandler(serviceProvider => {
+        var remoteOptions = serviceProvider
+            .GetRequiredService<IOptions<PrintBridgeOptions>>()
+            .Value;
+
+        var handler = new HttpClientHandler();
+        if (remoteOptions.RemoteAllowInsecureTls) {
+            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+        }
+        return handler;
+    });
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

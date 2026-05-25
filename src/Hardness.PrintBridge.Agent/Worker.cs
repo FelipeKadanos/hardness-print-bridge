@@ -8,6 +8,7 @@ namespace Hardness.PrintBridge.Agent;
 public class Worker(
     ILogger<Worker> logger,
     IOptions<PrintBridgeOptions> options,
+    IRemoteJobFetcher remoteJobFetcher,
     IPrintJobParser printJobParser,
     IPrinterResolver printerResolver,
     IRawPrinterClient rawPrinterClient,
@@ -28,8 +29,16 @@ public class Worker(
             var cycleStartedAt = DateTimeOffset.Now;
             var processedCount = 0;
             var failedCount = 0;
+            var remoteDownloaded = 0;
+            var remoteSkipped = 0;
+            var remoteFailed = 0;
 
             try {
+                var remoteResult = await remoteJobFetcher.FetchAsync(stoppingToken);
+                remoteDownloaded += remoteResult.DownloadedCount;
+                remoteSkipped += remoteResult.SkippedCount;
+                remoteFailed += remoteResult.FailedCount;
+
                 var processingResult = await ProcessProcessingBatchAsync(stoppingToken);
                 processedCount += processingResult.ProcessedCount;
                 failedCount += processingResult.FailedCount;
@@ -43,10 +52,13 @@ public class Worker(
             }
 
             logger.LogInformation(
-                "Queue cycle finished. StartedAt={StartedAt}, Processed={ProcessedCount}, Failed={FailedCount}.",
+                "Queue cycle finished. StartedAt={StartedAt}, Processed={ProcessedCount}, Failed={FailedCount}, RemoteDownloaded={RemoteDownloaded}, RemoteSkipped={RemoteSkipped}, RemoteFailed={RemoteFailed}.",
                 cycleStartedAt,
                 processedCount,
-                failedCount);
+                failedCount,
+                remoteDownloaded,
+                remoteSkipped,
+                remoteFailed);
 
             await Task.Delay(_options.PollIntervalMs, stoppingToken);
         }
