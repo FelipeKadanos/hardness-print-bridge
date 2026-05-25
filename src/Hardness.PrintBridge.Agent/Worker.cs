@@ -22,6 +22,15 @@ public class Worker(
             "Queue worker started. Watching '{WatchPath}' every {PollIntervalMs}ms.",
             _options.WatchPath,
             _options.PollIntervalMs);
+        if (_options.RemoteSourceEnabled) {
+            logger.LogInformation(
+                "Remote source enabled. ListUrl='{RemoteListUrl}', DownloadUrlTemplate='{RemoteDownloadUrlTemplate}', PollIntervalMs={RemotePollIntervalMs}.",
+                SanitizeUrlForLogs(_options.RemoteListUrl),
+                SanitizeUrlForLogs(_options.RemoteDownloadUrlTemplate),
+                _options.RemotePollIntervalMs ?? _options.PollIntervalMs);
+        } else {
+            logger.LogInformation("Remote source disabled. Using local inbox only.");
+        }
 
         await RecoverProcessingQueueAsync(stoppingToken);
 
@@ -316,6 +325,14 @@ public class Worker(
 
         var extracted = fileName[printerStart..extensionIndex].Trim();
         return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
+    }
+
+    private static string? SanitizeUrlForLogs(string? url) {
+        if (string.IsNullOrWhiteSpace(url)) {
+            return url;
+        }
+
+        return url.Replace("API_AUTH=", "API_AUTH=***", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class BatchResult {

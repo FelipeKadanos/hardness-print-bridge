@@ -26,6 +26,11 @@ public sealed class RemoteJobFetcher(
 
         var result = new RemoteFetchResult();
         try {
+            logger.LogInformation(
+                "Remote fetch cycle started. ListUrl='{RemoteListUrl}', MaxFilesPerCycle={MaxFilesPerCycle}.",
+                SanitizeUrlForLogs(_options.RemoteListUrl),
+                _options.RemoteMaxFilesPerCycle);
+
             var listResponse = await ListRemoteFilesAsync(cancellationToken);
             var remoteFiles = listResponse.Files
                 .Where(static f => !string.IsNullOrWhiteSpace(f.Name))
@@ -34,8 +39,10 @@ public sealed class RemoteJobFetcher(
                 .ToArray();
 
             result = result with { ListedCount = remoteFiles.Length };
+            logger.LogInformation("Remote list returned {ListedCount} candidate .etq file(s).", remoteFiles.Length);
             if (remoteFiles.Length == 0) {
                 SetNextPollWithoutBackoff();
+                logger.LogInformation("Remote fetch cycle finished with no files.");
                 return result;
             }
 
@@ -45,6 +52,7 @@ public sealed class RemoteJobFetcher(
                 var fileName = remoteFile.Name.Trim();
 
                 if (ShouldSkip(fileName, seen)) {
+                    logger.LogDebug("Remote file '{FileName}' skipped (already present/seen).", fileName);
                     result = result with { SkippedCount = result.SkippedCount + 1 };
                     continue;
                 }
@@ -53,6 +61,7 @@ public sealed class RemoteJobFetcher(
                     var bytes = await DownloadFileAsync(fileName, cancellationToken);
                     await SaveToInboxAtomicallyAsync(fileName, bytes, cancellationToken);
                     seen.Add(fileName);
+                    logger.LogInformation("Remote file '{FileName}' downloaded to inbox ({ByteCount} bytes).", fileName, bytes.Length);
                     result = result with { DownloadedCount = result.DownloadedCount + 1 };
                 } catch (Exception ex) when (ex is not OperationCanceledException) {
                     logger.LogError(ex, "Failed to fetch remote file '{FileName}'.", fileName);
@@ -63,11 +72,21 @@ public sealed class RemoteJobFetcher(
             await SaveSeenSetAsync(seen, cancellationToken);
             if (result.FailedCount > 0) {
                 ApplyBackoff();
+                logger.LogWarning(
+                    "Remote fetch cycle finished with failures. Downloaded={DownloadedCount}, Skipped={SkippedCount}, Failed={FailedCount}. Backoff applied.",
+                    result.DownloadedCount,
+                    result.SkippedCount,
+                    result.FailedCount);
                 return result with { BackoffApplied = true };
             }
 
             _consecutiveFailures = 0;
             SetNextPollWithoutBackoff();
+            logger.LogInformation(
+                "Remote fetch cycle finished successfully. Downloaded={DownloadedCount}, Skipped={SkippedCount}, Failed={FailedCount}.",
+                result.DownloadedCount,
+                result.SkippedCount,
+                result.FailedCount);
             return result;
         } catch (Exception ex) when (ex is not OperationCanceledException) {
             logger.LogError(ex, "Remote fetch cycle failed.");
@@ -82,6 +101,7 @@ public sealed class RemoteJobFetcher(
         }
 
         var response = await httpClient.GetAsync(_options.RemoteListUrl, cancellationToken);
+        logger.LogDebug("Remote list HTTP status: {StatusCode}.", (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
         var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
         return ParseRemoteListPayload(rawJson);
@@ -95,6 +115,7 @@ public sealed class RemoteJobFetcher(
         var encodedName = Uri.EscapeDataString(fileName);
         var downloadUrl = _options.RemoteDownloadUrlTemplate.Replace("{fileName}", encodedName, StringComparison.Ordinal);
         var response = await httpClient.GetAsync(downloadUrl, cancellationToken);
+        logger.LogDebug("Remote download status for '{FileName}': {StatusCode}.", fileName, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
@@ -309,5 +330,13 @@ public sealed class RemoteJobFetcher(
         public string Name { get; init; } = string.Empty;
         public long? Size { get; init; }
         public DateTimeOffset? ModifiedUtc { get; init; }
+    }
+
+    private static string? SanitizeUrlForLogs(string? url) {
+        if (string.IsNullOrWhiteSpace(url)) {
+            return url;
+        }
+
+        return url.Replace("API_AUTH=", "API_AUTH=***", StringComparison.OrdinalIgnoreCase);
     }
 }
