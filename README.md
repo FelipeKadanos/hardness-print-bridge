@@ -14,9 +14,10 @@
 
 ## Visão rápida
 
-O **Hardness Print Bridge** conecta o Hardness às impressoras do cliente via fila local:
+O **Hardness Print Bridge** conecta o Hardness às impressoras do cliente com dois modos de entrada:
 
-`inbox -> processing -> printed/error`
+- **Fila local**: `inbox -> processing -> printed/error`
+- **Coleta remota**: o agente busca `.etq` via API HTTP, salva na `inbox` e usa o mesmo pipeline local
 
 ## Setup rápido
 
@@ -34,11 +35,31 @@ dotnet run --project src/Hardness.PrintBridge.Agent
 Copy-Item src/Hardness.PrintBridge.Agent/appsettings.Local.example.json src/Hardness.PrintBridge.Agent/appsettings.Local.json
 ```
 
-Ajuste no `appsettings.Local.json`:
+### Modo 1: fila local (filesystem)
 
 - `WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`
 - `DefaultPrinterName`
-- `HardnessCallbackUrl`, `HardnessCallbackToken` (se aplicável)
+
+### Modo 2: coleta remota (API dedicada)
+
+- `RemoteSourceEnabled = true`
+- `RemoteListUrl`
+- `RemoteDownloadUrlTemplate` (usa `{fileName}`)
+- `RemotePollIntervalMs`, `RemoteTimeoutMs`, `RemoteMaxFilesPerCycle`
+- `RemoteSeenCachePath` (cache de dedupe local)
+
+Exemplo com endpoints reais:
+
+```json
+"RemoteSourceEnabled": true,
+"RemoteListUrl": "http://localhosts/api/rel/impressao_info?API_AUTH=REPLACE_ME",
+"RemoteDownloadUrlTemplate": "http://localhosts/api/rel/impressao_arquivo?API_AUTH=REPLACE_ME&arquivo={fileName}"
+```
+
+### Callback para Hardness
+
+- `HardnessCallbackUrl`
+- `HardnessCallbackToken` (opcional)
 
 ## Publicação (Release)
 
@@ -69,13 +90,11 @@ Stop-Service HardnessPrintBridgeAgent
 Restart-Service HardnessPrintBridgeAgent
 ```
 
-## Permissões recomendadas da conta do serviço
+## Operação e deduplicação
 
-A conta que executa o serviço precisa de:
-
-- leitura/escrita em `WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`
-- leitura/escrita em `logs/` (ou no diretório de log configurado)
-- acesso às impressoras alvo no Windows
+- arquivos remotos são baixados para `inbox` com escrita atômica
+- arquivos já existentes em `inbox/processing/printed/error` são ignorados
+- cache local de vistos (`RemoteSeenCachePath`) evita reingestão
 
 ## Estrutura
 
@@ -88,11 +107,13 @@ src/
     Infrastructure/
       Callback/
       Printing/
+      Queue/
 ```
 
 ## Status
 
-Fases 0 a 5 implementadas no backlog técnico.  
+MVP implementado com fluxo local + coleta remota por API dedicada.
+
 Referências:
 
 - [mvp_servico_impressao.md](./mvp_servico_impressao.md)
