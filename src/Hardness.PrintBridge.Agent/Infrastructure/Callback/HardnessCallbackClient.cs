@@ -51,16 +51,16 @@ public sealed class HardnessCallbackClient(
     }
 
     private HttpRequestMessage BuildRequest(PrintCallbackRequest request) {
-        var callbackText = request.Status.Equals("success", StringComparison.OrdinalIgnoreCase)
-            ? $"Arquivo '{request.FileName}' impresso com sucesso na impressora '{request.UsedPrinter ?? "(default)"}'."
-            : request.ErrorMessage ?? "Falha no processamento de impressao.";
+        var callbackMessage = string.IsNullOrWhiteSpace(request.ErrorMessage)
+            ? "Falha no processamento de impressao."
+            : request.ErrorMessage;
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.HardnessCallbackUrl) {
             Content = JsonContent.Create(new {
                 arquivo = request.FileName,
                 acao = request.Action,
                 status = request.Status,
-                texto = callbackText
+                mensagem = callbackMessage
             })
         };
 

@@ -182,7 +182,7 @@ public class Worker(
                 Status = "success",
                 RequestedPrinter = requestedPrinter,
                 UsedPrinter = resolvedPrinter,
-                ErrorMessage = null
+                ErrorMessage = $"Arquivo '{printJob.FileName}' impresso com sucesso na impressora '{resolvedPrinter}'."
             }, cancellationToken);
             fileResult.Success = true;
         } catch (PrinterResolutionException ex) {

@@ -66,7 +66,7 @@ Exemplo com endpoints reais:
   - `arquivo`
   - `acao` (valor padrão: `impressao`)
   - `status` (`success` ou `error`)
-  - `texto` (detalhe de sucesso/erro)
+  - `mensagem` (detalhe de sucesso/erro)
 
 ## Publicação (Release)
 

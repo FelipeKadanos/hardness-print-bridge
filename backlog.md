@@ -22,7 +22,7 @@
 ## Fase 3 — Integração Hardness
 - [x] Implementar cliente HTTP de callback (`success/error`).
 - [x] Incluir autenticação por token no callback (se configurado).
-- [x] Garantir payload mínimo de callback Hardness: `arquivo`, `acao`, `status`, `texto`.
+- [x] Garantir payload mínimo de callback Hardness: `arquivo`, `acao`, `status`, `mensagem`.
 - [x] Implementar retry simples de callback (ex.: 3 tentativas com backoff curto) sem reimprimir.
 
 ## Fase 4 — Resiliência operacional

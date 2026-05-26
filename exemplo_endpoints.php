@@ -26,7 +26,7 @@
     case 'list_files':
 		$retorno = $API003->auth($_GET['API_AUTH'], false);
 
-		if(is_array($retorno)){
+		if(is_array($retorno)) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode($retorno, JSON_UNESCAPED_UNICODE);
 			die();
@@ -34,14 +34,14 @@
 
 		$diretorioBase = obterDiretorioTmpImpressao();
 		$limite = isset($_GET['limite']) ? (int)$_GET['limite'] : 200;
-		if($limite <= 0){
+		if($limite <= 0) {
 			$limite = 200;
 		}
-		if($limite > 1000){
+		if($limite > 1000) {
 			$limite = 1000;
 		}
 
-		if(!file_exists($diretorioBase) || !is_dir($diretorioBase)){
+		if(!file_exists($diretorioBase) || !is_dir($diretorioBase)) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(array(
 				'sucesso' => false,
@@ -54,20 +54,20 @@
 		$itens = scandir($diretorioBase);
 		$itensValidos = array();
 
-		foreach($itens as $item){
-			if($item === '.' || $item === '..'){
+		foreach($itens as $item) {
+			if($item === '.' || $item === '..') {
 				continue;
 			}
 			$itensValidos[] = $item;
 		}
 
-		usort($itensValidos, function($a, $b) use ($diretorioBase){
+		usort($itensValidos, function($a, $b) use ($diretorioBase) {
 			$arquivoA = $diretorioBase . '/' . $a;
 			$arquivoB = $diretorioBase . '/' . $b;
 			$mtimeA = @filemtime($arquivoA);
 			$mtimeB = @filemtime($arquivoB);
 
-			if($mtimeA == $mtimeB){
+			if($mtimeA == $mtimeB) {
 				return 0;
 			}
 			return ($mtimeA > $mtimeB) ? -1 : 1;
@@ -78,18 +78,18 @@
 		$totalDiretorios = 0;
 		$totalBytes = 0;
 
-		foreach($itensValidos as $item){
+		foreach($itensValidos as $item) {
 			$caminhoItem = $diretorioBase . '/' . $item;
 			$eDiretorio = is_dir($caminhoItem);
 
-			if($eDiretorio){
+			if($eDiretorio) {
 				$totalDiretorios++;
 			} else {
 				$totalArquivos++;
 				$totalBytes += (int)filesize($caminhoItem);
 			}
 
-			if(count($arquivos) >= $limite){
+			if(count($arquivos) >= $limite) {
 				continue;
 			}
 
@@ -117,15 +117,15 @@
 	case 'select_file':
 		$retorno = $API003->auth($_GET['API_AUTH'], false);
 
-		if(is_array($retorno)){
+		if(is_array($retorno)) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode($retorno, JSON_UNESCAPED_UNICODE);
 			die();
 		}
 
-		$arquivo = isset($_GET['arquivo']) ? trim($_GET['arquivo']) : (isset($_GET['file']) ? trim($_GET['file']) : '');
+		$arquivo = isset($_GET['file']) ? trim($_GET['file']) : '';
 		$arquivo = basename($arquivo);
-		if($arquivo === ''){
+		if($arquivo === '') {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(array(
 				'sucesso' => false,
@@ -136,7 +136,7 @@
 
 		$diretorioBase = obterDiretorioTmpImpressao();
 		$caminhoArquivo = $diretorioBase . '/' . $arquivo;
-		if(!is_file($caminhoArquivo)){
+		if(!is_file($caminhoArquivo)) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(array(
 				'sucesso' => false,
@@ -147,7 +147,7 @@
 		}
 
 		$conteudo = file_get_contents($caminhoArquivo);
-		if($conteudo === false){
+		if($conteudo === false) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(array(
 				'sucesso' => false,
@@ -167,37 +167,37 @@
 	case 'callback':
 		$retorno = $API003->auth($_GET['API_AUTH'], false);
 
-		if(is_array($retorno)){
+		if(is_array($retorno)) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode($retorno, JSON_UNESCAPED_UNICODE);
 			die();
 		}
 
 		$payload = json_decode(file_get_contents('php://input'), true);
-		if(!is_array($payload)){
+		if(!is_array($payload)) {
 			$payload = array();
 		}
 
 		$arquivo = isset($_POST['arquivo']) ? trim($_POST['arquivo']) : (isset($payload['arquivo']) ? trim($payload['arquivo']) : '');
 		$acao = isset($_POST['acao']) ? trim($_POST['acao']) : (isset($payload['acao']) ? trim($payload['acao']) : '');
 		$status = isset($_POST['status']) ? trim($_POST['status']) : (isset($payload['status']) ? trim($payload['status']) : '');
-		$texto = isset($_POST['texto']) ? trim($_POST['texto']) : (isset($payload['texto']) ? trim($payload['texto']) : '');
+		$mensagem = isset($_POST['mensagem']) ? trim($_POST['mensagem']) : (isset($payload['mensagem']) ? trim($payload['mensagem']) : '');
 
 		$camposFaltando = array();
-		if($arquivo === ''){
+		if($arquivo === '') {
 			$camposFaltando[] = 'arquivo';
 		}
-		if($acao === ''){
+		if($acao === '') {
 			$camposFaltando[] = 'acao';
 		}
-		if($status === ''){
+		if($status === '') {
 			$camposFaltando[] = 'status';
 		}
-		if($texto === ''){
-			$camposFaltando[] = 'texto';
+		if($mensagem === '') {
+			$camposFaltando[] = 'mensagem';
 		}
 
-		if(!empty($camposFaltando)){
+		if(!empty($camposFaltando)) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(array(
 				'sucesso' => false,
@@ -206,8 +206,8 @@
 			die();
 		}
 
-		$retornoInsert = inserirCallbackP005($arquivo, $acao, $status, $texto);
-		if($retornoInsert !== true){
+		$retornoInsert = inserirCallbackP005($arquivo, $acao, $status, $mensagem);
+		if($retornoInsert !== true) {
 			header('Content-Type: application/json; charset=utf-8');
 			echo json_encode(array(
 				'sucesso' => false,
@@ -223,7 +223,7 @@
 				'arquivo' => $arquivo,
 				'acao' => $acao,
 				'status' => $status,
-				'texto' => $texto
+				'mensagem' => $mensagem
 			)
 		), JSON_UNESCAPED_UNICODE);
 		die();
@@ -232,44 +232,44 @@
 
 // Funções auxiliares
 
-function obterDiretorioTmpImpressao(){
+function obterDiretorioTmpImpressao() {
 	global $g;
 
 	$diretorioBase = rtrim($g['pathDados'], '/') . '/tmp/impressao';
-	if((!file_exists($diretorioBase) || !is_dir($diretorioBase)) && is_dir('/tmp/impressao')){
+	if((!file_exists($diretorioBase) || !is_dir($diretorioBase)) && is_dir('/tmp/impressao')) {
 		$diretorioBase = '/tmp/impressao';
 	}
 
 	return $diretorioBase;
 }
 
-function deletarArquivoTmpImpressao($arquivo){
+function deletarArquivoTmpImpressao($arquivo) {
 	$arquivoOriginal = trim((string)$arquivo);
 	$arquivo = basename($arquivoOriginal);
-	if($arquivo === ''){
+	if($arquivo === '') {
 		return 'Parametro "arquivo" nao informado ou vazio.';
 	}
 
-	if($arquivo !== $arquivoOriginal){
+	if($arquivo !== $arquivoOriginal) {
 		return 'Nome de arquivo invalido. Informe somente o nome do arquivo, sem caminho.';
 	}
 
 	$diretorioBase = obterDiretorioTmpImpressao();
 	$caminhoArquivo = $diretorioBase . '/' . $arquivo;
-	if(!is_file($caminhoArquivo)){
+	if(!is_file($caminhoArquivo)) {
 		return 'Arquivo nao encontrado para exclusao em: ' . $caminhoArquivo;
 	}
 
 	$erroUnlink = '';
-	set_error_handler(function($errno, $errstr) use (&$erroUnlink){
+	set_error_handler(function($errno, $errstr) use (&$erroUnlink) {
 		$erroUnlink = $errstr;
 		return true;
 	});
 	$deletou = unlink($caminhoArquivo);
 	restore_error_handler();
 
-	if(!$deletou){
-		if($erroUnlink !== ''){
+	if(!$deletou) {
+		if($erroUnlink !== '') {
 			return 'Falha ao deletar arquivo "' . $caminhoArquivo . '": ' . $erroUnlink;
 		}
 		return 'Falha ao deletar arquivo "' . $caminhoArquivo . '" sem detalhe retornado pelo sistema.';
@@ -278,28 +278,28 @@ function deletarArquivoTmpImpressao($arquivo){
 	return true;
 }
 
-function inserirCallbackP005($arquivo, $acao, $status, $texto){
+function inserirCallbackP005($arquivo, $acao, $status, $mensagem) {
 	$arquivo = mysql_real_escape_string($arquivo);
 	$acao = mysql_real_escape_string($acao);
 	$status = mysql_real_escape_string($status);
-	$texto = mysql_real_escape_string($texto);
+	$mensagem = mysql_real_escape_string($mensagem);
 
 	$sql = "INSERT INTO P005 (
 				P005_Arquivo,
 				P005_Acao,
 				P005_Status,
-				P005_Texto,
+				P005_Mensagem,
 				P005_Data_Hora
 			) VALUES (
 				'{$arquivo}',
 				'{$acao}',
 				'{$status}',
-				'{$texto}',
+				'{$mensagem}',
 				NOW()
 			)";
 
 	$res = mysql_query($sql);
-	if(!$res){
+	if(!$res) {
 		return 'Erro ao inserir callback na P005: ' . mysql_error();
 	}
 

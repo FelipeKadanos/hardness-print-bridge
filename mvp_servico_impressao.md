@@ -59,7 +59,7 @@ Payload mínimo:
 - `arquivo`
 - `acao` (valor padrão no agente: `impressao`)
 - `status` (`success`/`error`)
-- `texto` (mensagem final de sucesso/erro)
+- `mensagem` (mensagem final de sucesso/erro)
 
 Com retry simples no envio HTTP.
 
