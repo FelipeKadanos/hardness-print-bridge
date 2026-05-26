@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Hardness.PrintBridge.Agent.Application;
 using Hardness.PrintBridge.Agent.Configuration;
@@ -52,19 +51,18 @@ public sealed class HardnessCallbackClient(
     }
 
     private HttpRequestMessage BuildRequest(PrintCallbackRequest request) {
+        var callbackText = request.Status.Equals("success", StringComparison.OrdinalIgnoreCase)
+            ? $"Arquivo '{request.FileName}' impresso com sucesso na impressora '{request.UsedPrinter ?? "(default)"}'."
+            : request.ErrorMessage ?? "Falha no processamento de impressao.";
+
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.HardnessCallbackUrl) {
             Content = JsonContent.Create(new {
-                file_name = request.FileName,
+                arquivo = request.FileName,
+                acao = request.Action,
                 status = request.Status,
-                requested_printer = request.RequestedPrinter,
-                used_printer = request.UsedPrinter,
-                error_message = request.ErrorMessage
+                texto = callbackText
             })
         };
-
-        if (!string.IsNullOrWhiteSpace(_options.HardnessCallbackToken)) {
-            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.HardnessCallbackToken);
-        }
 
         return httpRequest;
     }

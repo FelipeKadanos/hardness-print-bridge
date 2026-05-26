@@ -48,18 +48,25 @@ Copy-Item src/Hardness.PrintBridge.Agent/appsettings.Local.example.json src/Hard
 - `RemotePollIntervalMs`, `RemoteTimeoutMs`, `RemoteMaxFilesPerCycle`
 - `RemoteSeenCachePath` (cache de dedupe local)
 
+Contrato de referência dos endpoints Hardness:
+- [exemplo_endpoints.php](./exemplo_endpoints.php)
+
 Exemplo com endpoints reais:
 
 ```json
 "RemoteSourceEnabled": true,
-"RemoteListUrl": "http://localhosts/api/rel/impressao_info?API_AUTH=REPLACE_ME",
-"RemoteDownloadUrlTemplate": "http://localhosts/api/rel/impressao_arquivo?API_AUTH=REPLACE_ME&arquivo={fileName}"
+"RemoteListUrl": "http://localhost/api/rel/list_files?API_AUTH=REPLACE_ME",
+"RemoteDownloadUrlTemplate": "http://localhost/api/rel/select_file?API_AUTH=REPLACE_ME&arquivo={fileName}"
 ```
 
 ### Callback para Hardness
 
 - `HardnessCallbackUrl`
-- `HardnessCallbackToken` (opcional)
+- Payload enviado pelo agente (JSON):
+  - `arquivo`
+  - `acao` (valor padrão: `impressao`)
+  - `status` (`success` ou `error`)
+  - `texto` (detalhe de sucesso/erro)
 
 ## Publicação (Release)
 

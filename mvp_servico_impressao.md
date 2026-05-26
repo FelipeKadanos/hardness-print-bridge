@@ -18,8 +18,11 @@ O agente suporta dois modos:
    Busca lista de arquivos no servidor Hardness, baixa os `.etq`, salva na `inbox` local e processa no mesmo pipeline.
 
 Endpoints remotos (exemplo):
-- Listagem: `GET /api/rel/get/impressao_info?...`
-- Download: `GET /api/rel/get/impressao_arquivo?...&arquivo={fileName}`
+- Listagem: `GET /api/rel/list_files?...`
+- Download: `GET /api/rel/select_file?...&arquivo={fileName}`
+
+Referência de contrato (exemplo real do Hardness):
+- [exemplo_endpoints.php](./exemplo_endpoints.php)
 
 ## 3) Formato de payload
 
@@ -53,11 +56,10 @@ O agente converte para `byte[]` e envia em RAW para spooler Windows.
 ## 7) Callback para Hardness
 
 Payload mínimo:
-- `file_name`
+- `arquivo`
+- `acao` (valor padrão no agente: `impressao`)
 - `status` (`success`/`error`)
-- `requested_printer`
-- `used_printer`
-- `error_message`
+- `texto` (mensagem final de sucesso/erro)
 
 Com retry simples no envio HTTP.
 
@@ -66,7 +68,7 @@ Com retry simples no envio HTTP.
 - `WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`
 - `DefaultPrinterName`
 - `PollIntervalMs`
-- `HardnessCallbackUrl`, `HardnessCallbackToken`
+- `HardnessCallbackUrl`
 
 Modo remoto:
 - `RemoteSourceEnabled`

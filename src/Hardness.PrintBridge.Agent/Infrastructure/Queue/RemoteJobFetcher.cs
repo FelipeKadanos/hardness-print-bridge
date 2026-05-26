@@ -103,6 +103,7 @@ public sealed class RemoteJobFetcher(
         var response = await httpClient.GetAsync(_options.RemoteListUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
         var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        ThrowIfApiReturnedFailure(rawJson, "listagem remota");
         return ParseRemoteListPayload(rawJson);
     }
 
@@ -115,7 +116,9 @@ public sealed class RemoteJobFetcher(
         var downloadUrl = _options.RemoteDownloadUrlTemplate.Replace("{fileName}", encodedName, StringComparison.Ordinal);
         var response = await httpClient.GetAsync(downloadUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        ThrowIfApiReturnedFailure(bytes, "download remoto", fileName);
+        return bytes;
     }
 
     private async Task<string> SaveToInboxAtomicallyAsync(
@@ -369,6 +372,42 @@ public sealed class RemoteJobFetcher(
         }
 
         return DateTimeOffset.TryParse(value.GetString(), out var parsed) ? parsed : null;
+    }
+
+    private static void ThrowIfApiReturnedFailure(string rawJson, string operationName) {
+        using var document = JsonDocument.Parse(rawJson);
+        ThrowIfApiReturnedFailure(document.RootElement, operationName);
+    }
+
+    private static void ThrowIfApiReturnedFailure(byte[] payload, string operationName, string fileName) {
+        if (payload.Length == 0) {
+            return;
+        }
+
+        var firstByte = payload[0];
+        if (firstByte is not (byte)'{' and not (byte)'[') {
+            return;
+        }
+
+        using var document = JsonDocument.Parse(payload);
+        ThrowIfApiReturnedFailure(document.RootElement, operationName, fileName);
+    }
+
+    private static void ThrowIfApiReturnedFailure(JsonElement root, string operationName, string? fileName = null) {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("sucesso", out var successProperty)) {
+            return;
+        }
+
+        var success = successProperty.ValueKind == JsonValueKind.True;
+        if (success) {
+            return;
+        }
+
+        var errorMessage = TryGetString(root, "erro")
+            ?? TryGetString(root, "message")
+            ?? "Erro remoto sem mensagem detalhada.";
+        var fileSuffix = string.IsNullOrWhiteSpace(fileName) ? string.Empty : $" para '{fileName}'";
+        throw new InvalidDataException($"Falha na {operationName}{fileSuffix}: {errorMessage}");
     }
 
     private sealed class RemoteListResponse {

@@ -50,6 +50,4 @@ public class PrintBridgeOptions {
 
     [Required]
     public string HardnessCallbackUrl { get; init; } = string.Empty;
-
-    public string? HardnessCallbackToken { get; init; }
 }
