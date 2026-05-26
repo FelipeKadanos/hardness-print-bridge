@@ -262,6 +262,7 @@ public sealed class RemoteJobFetcher(
 
         var name = TryGetString(element, "name")
             ?? TryGetString(element, "arquivo")
+            ?? TryGetString(element, "nome")
             ?? TryGetString(element, "fileName")
             ?? TryGetString(element, "filename");
 
@@ -269,10 +270,19 @@ public sealed class RemoteJobFetcher(
             return false;
         }
 
+        var tipo = TryGetString(element, "tipo");
+        if (!string.IsNullOrWhiteSpace(tipo)
+            && !tipo.Equals("arquivo", StringComparison.OrdinalIgnoreCase)
+            && !tipo.Equals("file", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
         file = new RemoteFileItem {
             Name = name,
-            Size = TryGetLong(element, "size"),
-            ModifiedUtc = TryGetDate(element, "modifiedUtc") ?? TryGetDate(element, "modified")
+            Size = TryGetLong(element, "size") ?? TryGetLong(element, "tamanho_bytes"),
+            ModifiedUtc = TryGetDate(element, "modifiedUtc")
+                ?? TryGetDate(element, "modified")
+                ?? TryGetDate(element, "modificado_em")
         };
         return true;
     }
