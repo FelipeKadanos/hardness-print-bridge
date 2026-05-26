@@ -13,10 +13,17 @@ public sealed class RemoteJobFetcher(
     private readonly SemaphoreSlim _seenLock = new(1, 1);
     private DateTimeOffset _nextRemotePollAtUtc = DateTimeOffset.MinValue;
     private int _consecutiveFailures = 0;
+    private bool _isFirstFetchCycle = true;
 
     public async Task<RemoteFetchResult> FetchAsync(CancellationToken cancellationToken) {
         if (!_options.RemoteSourceEnabled) {
             return RemoteFetchResult.Disabled;
+        }
+
+        var firstCycleMode = _isFirstFetchCycle;
+        if (_isFirstFetchCycle) {
+            await ClearSeenCacheAsync(cancellationToken);
+            _isFirstFetchCycle = false;
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -44,15 +51,27 @@ public sealed class RemoteJobFetcher(
                 cancellationToken.ThrowIfCancellationRequested();
                 var fileName = remoteFile.Name.Trim();
 
-                if (ShouldSkip(fileName, seen)) {
+                if (remoteFile.Size is 0) {
+                    logger.LogWarning(
+                        "Skipping remote file '{FileName}' because it is empty (0 bytes).",
+                        fileName);
+                    result = result with { SkippedCount = result.SkippedCount + 1 };
+                    continue;
+                }
+
+                if (!firstCycleMode && ShouldSkip(fileName, seen)) {
                     result = result with { SkippedCount = result.SkippedCount + 1 };
                     continue;
                 }
 
                 try {
                     var bytes = await DownloadFileAsync(fileName, cancellationToken);
-                    await SaveToInboxAtomicallyAsync(fileName, bytes, cancellationToken);
+                    var savedFileName = await SaveToInboxAtomicallyAsync(fileName, bytes, firstCycleMode, cancellationToken);
                     seen.Add(fileName);
+                    logger.LogInformation(
+                        "Remote file '{RemoteFileName}' saved to inbox as '{SavedFileName}'.",
+                        fileName,
+                        savedFileName);
                     result = result with { DownloadedCount = result.DownloadedCount + 1 };
                 } catch (Exception ex) when (ex is not OperationCanceledException) {
                     logger.LogError(ex, "Failed to fetch remote file '{FileName}'.", fileName);
@@ -99,23 +118,28 @@ public sealed class RemoteJobFetcher(
         return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
-    private async Task SaveToInboxAtomicallyAsync(string fileName, byte[] content, CancellationToken cancellationToken) {
+    private async Task<string> SaveToInboxAtomicallyAsync(
+        string fileName,
+        byte[] content,
+        bool firstCycleMode,
+        CancellationToken cancellationToken) {
         Directory.CreateDirectory(_options.WatchPath);
 
-        var finalPath = Path.Combine(_options.WatchPath, fileName);
-        if (File.Exists(finalPath)) {
-            return;
-        }
+        var finalPath = ResolveInboxTargetPath(fileName, firstCycleMode);
 
         var tempPath = Path.Combine(_options.WatchPath, $"{fileName}.{Guid.NewGuid():N}.tmp");
         await File.WriteAllBytesAsync(tempPath, content, cancellationToken);
 
         try {
             File.Move(tempPath, finalPath, overwrite: false);
+            return Path.GetFileName(finalPath);
         } catch (IOException) {
             if (!File.Exists(finalPath)) {
                 throw;
             }
+
+            // Non-first-cycle collision means "already present", nothing to do.
+            return Path.GetFileName(finalPath);
         } finally {
             if (File.Exists(tempPath)) {
                 File.Delete(tempPath);
@@ -183,6 +207,42 @@ public sealed class RemoteJobFetcher(
         }
 
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, _options.RemoteSeenCachePath));
+    }
+
+    private async Task ClearSeenCacheAsync(CancellationToken cancellationToken) {
+        await _seenLock.WaitAsync(cancellationToken);
+        try {
+            var path = ResolveSeenCachePath();
+            if (File.Exists(path)) {
+                File.Delete(path);
+                logger.LogInformation(
+                    "Startup remote reset: cleared seen cache at '{SeenCachePath}' to allow re-download.",
+                    path);
+            } else {
+                logger.LogInformation(
+                    "Startup remote reset: no seen cache found at '{SeenCachePath}'.",
+                    path);
+            }
+        } finally {
+            _seenLock.Release();
+        }
+    }
+
+    private string ResolveInboxTargetPath(string fileName, bool firstCycleMode) {
+        var basePath = Path.Combine(_options.WatchPath, fileName);
+        if (!File.Exists(basePath)) {
+            return basePath;
+        }
+
+        if (!firstCycleMode) {
+            return basePath;
+        }
+
+        var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+        var extension = Path.GetExtension(fileName);
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
+        var uniqueName = $"{nameWithoutExtension}__startup-redownload-{stamp}{extension}";
+        return Path.Combine(_options.WatchPath, uniqueName);
     }
 
     private void SetNextPollWithoutBackoff() {
