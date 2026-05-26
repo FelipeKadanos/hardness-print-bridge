@@ -51,9 +51,9 @@ public sealed class HardnessCallbackClient(
     }
 
     private HttpRequestMessage BuildRequest(PrintCallbackRequest request) {
-        var callbackMessage = string.IsNullOrWhiteSpace(request.ErrorMessage)
+        var callbackMessage = string.IsNullOrWhiteSpace(request.Message)
             ? "Falha no processamento de impressao."
-            : request.ErrorMessage;
+            : request.Message;
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.HardnessCallbackUrl) {
             Content = JsonContent.Create(new {

@@ -143,6 +143,13 @@ public class Worker(
                 "Skipping '{FileName}' because it already exists in printed or error.",
                 fileName);
             TryMoveDuplicateToError(sourcePath, fileName, "Duplicate filename already finalized.");
+            await NotifyCallbackSafeAsync(new PrintCallbackRequest {
+                FileName = fileName,
+                Status = "error",
+                RequestedPrinter = requestedPrinter,
+                UsedPrinter = usedPrinter,
+                Message = "Arquivo ignorado por duplicidade: nome de arquivo ja finalizado em printed/error."
+            }, cancellationToken);
             fileResult.Success = false;
             return fileResult;
         }
@@ -182,7 +189,7 @@ public class Worker(
                 Status = "success",
                 RequestedPrinter = requestedPrinter,
                 UsedPrinter = resolvedPrinter,
-                ErrorMessage = $"Arquivo '{printJob.FileName}' impresso com sucesso na impressora '{resolvedPrinter}'."
+                Message = $"Arquivo '{printJob.FileName}' impresso com sucesso na impressora '{resolvedPrinter}'."
             }, cancellationToken);
             fileResult.Success = true;
         } catch (PrinterResolutionException ex) {
@@ -194,7 +201,7 @@ public class Worker(
                 Status = "error",
                 RequestedPrinter = requestedPrinter,
                 UsedPrinter = usedPrinter,
-                ErrorMessage = ex.Message
+                Message = ex.Message
             }, cancellationToken);
             fileResult.Success = false;
         } catch (InvalidDataException ex) {
@@ -206,7 +213,7 @@ public class Worker(
                 Status = "error",
                 RequestedPrinter = requestedPrinter,
                 UsedPrinter = usedPrinter,
-                ErrorMessage = ex.Message
+                Message = ex.Message
             }, cancellationToken);
             fileResult.Success = false;
         } catch (PrintJobProcessingException ex) {
@@ -218,7 +225,7 @@ public class Worker(
                 Status = "error",
                 RequestedPrinter = requestedPrinter,
                 UsedPrinter = usedPrinter,
-                ErrorMessage = ex.Message
+                Message = ex.Message
             }, cancellationToken);
             fileResult.Success = false;
         } catch (Exception ex) {
@@ -230,7 +237,7 @@ public class Worker(
                 Status = "error",
                 RequestedPrinter = requestedPrinter,
                 UsedPrinter = usedPrinter,
-                ErrorMessage = ex.Message
+                Message = ex.Message
             }, cancellationToken);
             fileResult.Success = false;
         }

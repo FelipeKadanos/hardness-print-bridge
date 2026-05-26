@@ -6,5 +6,5 @@ public sealed record PrintCallbackRequest {
     public string Action { get; init; } = "impressao";
     public string? RequestedPrinter { get; init; }
     public string? UsedPrinter { get; init; }
-    public string? ErrorMessage { get; init; }
+    public required string Message { get; init; }
 }
