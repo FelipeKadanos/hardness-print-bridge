@@ -33,7 +33,7 @@ Name: "startmenuicon"; Description: "Criar atalho no Menu Iniciar"; GroupDescrip
 Name: "autorunapp"; Description: "Iniciar automaticamente com o Windows"; GroupDescription: "Opcoes:"; Flags: checkedonce
 
 [Files]
-Source: "artifacts\package\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\package\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autodesktop}\Hardness Print Bridge"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
