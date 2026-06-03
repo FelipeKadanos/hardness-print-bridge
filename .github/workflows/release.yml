@@ -1,0 +1,112 @@
+name: build-and-release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore Hardness.PrintBridge.slnx
+
+      - name: Build
+        run: dotnet build Hardness.PrintBridge.slnx -c Release --no-restore
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $tests = Get-ChildItem -Recurse -Filter *Tests.csproj
+          if ($tests.Count -eq 0) {
+            Write-Host "No test projects found."
+            exit 0
+          }
+          dotnet test Hardness.PrintBridge.slnx -c Release --no-build
+
+      - name: Extract version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${env:GITHUB_REF_NAME}".TrimStart('v')
+          "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Publish App
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: >
+          dotnet publish src/Hardness.PrintBridge.App/Hardness.PrintBridge.App.csproj
+          -c Release
+          -o artifacts/publish/app
+          /p:Version=${{ steps.version.outputs.value }}
+          /p:AssemblyVersion=${{ steps.version.outputs.value }}.0
+          /p:FileVersion=${{ steps.version.outputs.value }}.0
+
+      - name: Publish Agent
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: >
+          dotnet publish src/Hardness.PrintBridge.Agent/Hardness.PrintBridge.Agent.csproj
+          -c Release
+          -o artifacts/publish/agent
+          /p:Version=${{ steps.version.outputs.value }}
+          /p:AssemblyVersion=${{ steps.version.outputs.value }}.0
+          /p:FileVersion=${{ steps.version.outputs.value }}.0
+
+      - name: Publish Updater
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: >
+          dotnet publish src/Hardness.PrintBridge.Updater/Hardness.PrintBridge.Updater.csproj
+          -c Release
+          -o artifacts/publish/updater
+          /p:Version=${{ steps.version.outputs.value }}
+          /p:AssemblyVersion=${{ steps.version.outputs.value }}.0
+          /p:FileVersion=${{ steps.version.outputs.value }}.0
+
+      - name: Build package layout
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $packagePath = "artifacts/package"
+          New-Item -ItemType Directory -Path $packagePath -Force | Out-Null
+          Copy-Item artifacts/publish/app/* $packagePath -Recurse -Force
+          Copy-Item artifacts/publish/agent/* $packagePath -Recurse -Force
+          Copy-Item artifacts/publish/updater/* $packagePath -Recurse -Force
+          New-Item -ItemType Directory -Path "$packagePath/scripts" -Force | Out-Null
+          Copy-Item scripts/install-service.ps1 "$packagePath/scripts/install-service.ps1" -Force
+          Copy-Item scripts/uninstall-service.ps1 "$packagePath/scripts/uninstall-service.ps1" -Force
+
+      - name: Create portable ZIP
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Compress-Archive -Path artifacts/package/* -DestinationPath artifacts/HardnessPrintBridge-${{ steps.version.outputs.value }}-portable.zip -Force
+
+      - name: Install Inno Setup
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: choco install innosetup -y
+
+      - name: Build installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer/HardnessPrintBridge.iss" "/DMyAppVersion=${{ steps.version.outputs.value }}"
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/HardnessPrintBridge-${{ steps.version.outputs.value }}-portable.zip
+            artifacts/installer/HardnessPrintBridge-Setup-${{ steps.version.outputs.value }}.exe

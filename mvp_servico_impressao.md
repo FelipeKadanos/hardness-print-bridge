@@ -19,7 +19,7 @@ O agente suporta dois modos:
 
 Endpoints remotos (exemplo):
 - Listagem: `GET /api/rel/list_files?...`
-- Download: `GET /api/rel/select_file?...&arquivo={fileName}`
+- Download: `GET /api/rel/select_file?...&file={fileName}`
 
 Referência de contrato (exemplo real do Hardness):
 - [exemplo_endpoints.php](./exemplo_endpoints.php)
@@ -69,6 +69,12 @@ Com retry simples no envio HTTP.
 - `DefaultPrinterName`
 - `PollIntervalMs`
 - `HardnessCallbackUrl`
+
+Exemplo atual de diretórios locais no ambiente de desenvolvimento:
+- `C:\Hardness-Print-Brige\print-agent\inbox`
+- `C:\Hardness-Print-Brige\print-agent\processing`
+- `C:\Hardness-Print-Brige\print-agent\printed`
+- `C:\Hardness-Print-Brige\print-agent\error`
 
 Modo remoto:
 - `RemoteSourceEnabled`

@@ -1,6 +1,8 @@
 using Hardness.PrintBridge.Agent.Application;
 using Hardness.PrintBridge.Agent.Configuration;
 using Hardness.PrintBridge.Agent.Infrastructure.Printing;
+using Hardness.PrintBridge.Agent.Infrastructure.Runtime;
+using Hardness.PrintBridge.Contracts.Runtime;
 using Microsoft.Extensions.Options;
 
 namespace Hardness.PrintBridge.Agent;
@@ -12,11 +14,13 @@ public class Worker(
     IPrintJobParser printJobParser,
     IPrinterResolver printerResolver,
     IRawPrinterClient rawPrinterClient,
+    AgentStatusWriter statusWriter,
     IHardnessCallbackClient callbackClient) : BackgroundService {
     private readonly PrintBridgeOptions _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         EnsureDirectories();
+        await WriteStatusSafeAsync(AgentState.Starting, "Agent iniciando.", stoppingToken);
 
         logger.LogInformation(
             "Queue worker started. Watching '{WatchPath}' every {PollIntervalMs}ms.",
@@ -60,8 +64,24 @@ public class Worker(
                 remoteSkipped,
                 remoteFailed);
 
+            var state = failedCount > 0 || remoteFailed > 0 ? AgentState.Warning : AgentState.Running;
+            var message = state == AgentState.Warning
+                ? "Agent executado com avisos no ultimo ciclo."
+                : "Agent em execucao.";
+            await WriteStatusSafeAsync(
+                state,
+                message,
+                stoppingToken,
+                processedCount,
+                failedCount,
+                remoteDownloaded,
+                remoteSkipped,
+                remoteFailed);
+
             await Task.Delay(_options.PollIntervalMs, stoppingToken);
         }
+
+        await WriteStatusSafeAsync(AgentState.Stopped, "Agent finalizado.", CancellationToken.None);
     }
 
     private void EnsureDirectories() {
@@ -254,6 +274,31 @@ public class Worker(
                 "Failed to send callback for '{FileName}' with status '{Status}'.",
                 callbackRequest.FileName,
                 callbackRequest.Status);
+        }
+    }
+
+    private async Task WriteStatusSafeAsync(
+        string state,
+        string message,
+        CancellationToken cancellationToken,
+        int? processedCount = null,
+        int? failedCount = null,
+        int? remoteDownloaded = null,
+        int? remoteSkipped = null,
+        int? remoteFailed = null) {
+        try {
+            await statusWriter.WriteAsync(new AgentStatusSnapshot {
+                State = state,
+                Message = message,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+                ProcessedCount = processedCount,
+                FailedCount = failedCount,
+                RemoteDownloaded = remoteDownloaded,
+                RemoteSkipped = remoteSkipped,
+                RemoteFailed = remoteFailed
+            }, cancellationToken);
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
+            logger.LogWarning(ex, "Failed to persist agent status snapshot.");
         }
     }
 

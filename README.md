@@ -19,6 +19,12 @@ O **Hardness Print Bridge** conecta o Hardness às impressoras do cliente com do
 - **Fila local**: `inbox -> processing -> printed/error`
 - **Coleta remota**: o agente busca `.etq` via API HTTP, salva na `inbox` e usa o mesmo pipeline local
 
+Arquitetura atual:
+
+- `Hardness.PrintBridge.Agent`: nucleo de impressao, autonomo, executavel sozinho e instalavel como Windows Service
+- `Hardness.PrintBridge.App`: aplicativo Windows com tray, configuracoes locais, checagem de atualizacao e orquestracao leve
+- `Hardness.PrintBridge.Updater`: executavel separado para aplicar atualizacoes com backup e rollback
+
 ## Setup rápido
 
 ```powershell
@@ -40,6 +46,16 @@ Copy-Item src/Hardness.PrintBridge.Agent/appsettings.Local.example.json src/Hard
 - `WatchPath`, `ProcessingPath`, `PrintedPath`, `ErrorPath`
 - `DefaultPrinterName`
 
+Exemplo de paths padrão usados nos arquivos de configuração de desenvolvimento:
+
+```json
+"WatchPath": "C:\\Hardness-Print-Brige\\print-agent\\inbox",
+"ProcessingPath": "C:\\Hardness-Print-Brige\\print-agent\\processing",
+"PrintedPath": "C:\\Hardness-Print-Brige\\print-agent\\printed",
+"ErrorPath": "C:\\Hardness-Print-Brige\\print-agent\\error",
+"DefaultPrinterName": "Microsoft Print to PDF"
+```
+
 ### Modo 2: coleta remota (API dedicada)
 
 - `RemoteSourceEnabled = true`
@@ -56,7 +72,7 @@ Exemplo com endpoints reais:
 ```json
 "RemoteSourceEnabled": true,
 "RemoteListUrl": "http://localhost/api/rel/list_files?API_AUTH=REPLACE_ME",
-"RemoteDownloadUrlTemplate": "http://localhost/api/rel/select_file?API_AUTH=REPLACE_ME&arquivo={fileName}"
+"RemoteDownloadUrlTemplate": "http://localhost/api/rel/select_file?API_AUTH=REPLACE_ME&file={fileName}"
 ```
 
 ### Callback para Hardness
@@ -72,6 +88,24 @@ Exemplo com endpoints reais:
 
 ```powershell
 dotnet publish src/Hardness.PrintBridge.Agent/Hardness.PrintBridge.Agent.csproj -c Release -o .\publish
+```
+
+Build completo da solucao:
+
+```powershell
+dotnet build Hardness.PrintBridge.slnx -c Debug
+```
+
+Execucao independente do `Agent`:
+
+```powershell
+dotnet run --project src/Hardness.PrintBridge.Agent
+```
+
+Execucao do `App` desktop/tray:
+
+```powershell
+dotnet run --project src/Hardness.PrintBridge.App
 ```
 
 ## Instalação como Windows Service
@@ -103,10 +137,37 @@ Restart-Service HardnessPrintBridgeAgent
 - arquivos já existentes em `inbox/processing/printed/error` são ignorados
 - cache local de vistos (`RemoteSeenCachePath`) evita reingestão
 
+## Status do Agent
+
+- o `Agent` publica snapshots de status em `ProgramData\HardnessPrintBridge\status\agent-status.json`
+- o `App` consome esse status via `IAgentStatusSource`
+- a implementacao atual usa JSON, mas a leitura ficou abstraida para futura troca por Named Pipes
+
+## Atualizacao automatica
+
+- o `App` verifica novas releases do GitHub ao iniciar
+- o `App` revalida periodicamente a cada 6 horas
+- a instalacao da atualizacao acontece somente com confirmacao do usuario
+- o `Updater` aplica o pacote fora do processo principal, com backup e tentativa de rollback
+
+## Versionamento e releases
+
+- a fonte unica da verdade da versao e a Git Tag semantica (`v1.2.3`)
+- o GitHub Actions injeta a versao da tag no build
+- a GitHub Release e criada automaticamente a partir da mesma tag
+
+## Instalador
+
+- tecnologia escolhida: `Inno Setup`
+- script do instalador: [installer/HardnessPrintBridge.iss](./installer/HardnessPrintBridge.iss)
+- pipeline de release: [.github/workflows/release.yml](./.github/workflows/release.yml)
+
 ## Estrutura
 
 ```txt
 src/
+  Hardness.PrintBridge.Contracts/
+  Hardness.PrintBridge.App/
   Hardness.PrintBridge.Agent/
     Configuration/
     Domain/
@@ -115,6 +176,7 @@ src/
       Callback/
       Printing/
       Queue/
+  Hardness.PrintBridge.Updater/
 ```
 
 ## Status
