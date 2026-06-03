@@ -34,7 +34,7 @@
 ## Fase 5 — Serviço Windows e entrega
 - [x] Empacotar para execução como Windows Service com auto-start.
 - [x] Criar script de instalação/remoção do serviço.
-- [x] Documentar configuração de diretórios e permissões da conta do serviço.
+- [x] Documentar configuração de diretórios e permissões da conta do serviço (`C:\Hardness-Print-Brige\print-agent\...`).
 - [x] Documentar procedimento de operação e troubleshooting básico.
 
 ## Fase 6 — Testes de aceite do MVP
@@ -52,3 +52,11 @@
 - [x] Implementar escrita atômica na `inbox` para arquivos baixados.
 - [x] Adicionar configuração remota (`Remote*`) e validações de startup.
 - [x] Adicionar observabilidade de ciclo remoto (baixados, ignorados, falhas, backoff).
+
+## Fase 8 — App desktop, tray e distribuição
+- [x] Adicionar projeto compartilhado para contratos leves entre `Agent`, `App` e `Updater`.
+- [x] Publicar status do `Agent` em JSON em `LocalAppData`.
+- [x] Adicionar `App` Windows com tray, leitura de status por abstração e preferências locais.
+- [x] Adicionar `Updater` separado com backup e tentativa de rollback.
+- [x] Adicionar workflow de GitHub Actions baseado em Git Tag como fonte de verdade da versão.
+- [x] Adicionar script de instalador Inno Setup.

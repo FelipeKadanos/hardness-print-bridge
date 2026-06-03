@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Hardness.PrintBridge.Contracts/Hardness.PrintBridge.Contracts.csproj" />
+    <Project Path="src/Hardness.PrintBridge.App/Hardness.PrintBridge.App.csproj" />
     <Project Path="src/Hardness.PrintBridge.Agent/Hardness.PrintBridge.Agent.csproj" />
+    <Project Path="src/Hardness.PrintBridge.Updater/Hardness.PrintBridge.Updater.csproj" />
   </Folder>
 </Solution>

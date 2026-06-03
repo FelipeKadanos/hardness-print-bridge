@@ -3,6 +3,7 @@ using Hardness.PrintBridge.Agent.Configuration;
 using Hardness.PrintBridge.Agent.Infrastructure.Callback;
 using Hardness.PrintBridge.Agent.Infrastructure.Printing;
 using Hardness.PrintBridge.Agent.Infrastructure.Queue;
+using Hardness.PrintBridge.Agent.Infrastructure.Runtime;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Hardness.PrintBridge.Agent;
@@ -38,6 +39,7 @@ builder.Services.AddSerilog((services, configuration) => {
 builder.Services.AddSingleton<IPrintJobParser, EtqPrintJobParser>();
 builder.Services.AddSingleton<IPrinterResolver, WindowsPrinterResolver>();
 builder.Services.AddSingleton<IRawPrinterClient, WindowsRawPrinterClient>();
+builder.Services.AddSingleton<AgentStatusWriter>();
 builder.Services.AddHttpClient<IHardnessCallbackClient, HardnessCallbackClient>();
 builder.Services
     .AddHttpClient<IRemoteJobFetcher, RemoteJobFetcher>((serviceProvider, client) => {
