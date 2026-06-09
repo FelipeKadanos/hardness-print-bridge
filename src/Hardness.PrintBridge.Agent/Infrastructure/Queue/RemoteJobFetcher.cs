@@ -100,7 +100,8 @@ public sealed class RemoteJobFetcher(
             throw new InvalidOperationException("RemoteListUrl is required when remote source is enabled.");
         }
 
-        var response = await httpClient.GetAsync(_options.RemoteListUrl, cancellationToken);
+        var listUrl = PrintBridgeUrlResolver.Resolve(_options.RemoteListUrl, _options.ApiAuthToken);
+        var response = await httpClient.GetAsync(listUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
         var rawJson = await response.Content.ReadAsStringAsync(cancellationToken);
         ThrowIfApiReturnedFailure(rawJson, "listagem remota");
@@ -113,7 +114,8 @@ public sealed class RemoteJobFetcher(
         }
 
         var encodedName = Uri.EscapeDataString(fileName);
-        var downloadUrl = _options.RemoteDownloadUrlTemplate.Replace("{fileName}", encodedName, StringComparison.Ordinal);
+        var downloadUrl = PrintBridgeUrlResolver.Resolve(_options.RemoteDownloadUrlTemplate, _options.ApiAuthToken)
+            .Replace("{fileName}", encodedName, StringComparison.Ordinal);
         var response = await httpClient.GetAsync(downloadUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);

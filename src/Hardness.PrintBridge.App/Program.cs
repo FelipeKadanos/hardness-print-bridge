@@ -8,6 +8,8 @@ using Microsoft.Extensions.Hosting;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddSingleton<IAppSettingsStore, JsonAppSettingsStore>();
+builder.Services.AddSingleton<IAgentConfigurationStore, JsonAgentConfigurationStore>();
+builder.Services.AddSingleton<IPrinterCatalogService, WindowsPrinterCatalogService>();
 builder.Services.AddSingleton<IStartupService, WindowsStartupService>();
 builder.Services.AddSingleton<IAgentStatusSource, JsonAgentStatusSource>();
 builder.Services.AddSingleton<IAgentControlService, AgentControlService>();

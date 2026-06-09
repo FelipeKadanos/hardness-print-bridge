@@ -55,7 +55,9 @@ public sealed class HardnessCallbackClient(
             ? "Falha no processamento de impressao."
             : request.Message;
 
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.HardnessCallbackUrl) {
+        var callbackUrl = PrintBridgeUrlResolver.Resolve(_options.HardnessCallbackUrl, _options.ApiAuthToken);
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, callbackUrl) {
             Content = JsonContent.Create(new {
                 arquivo = request.FileName,
                 acao = request.Action,

@@ -5,6 +5,8 @@ namespace Hardness.PrintBridge.Agent.Configuration;
 public class PrintBridgeOptions {
     public const string SectionName = "PrintBridge";
 
+    public string? QueueRootPath { get; init; }
+
     [Required]
     public string WatchPath { get; init; } = string.Empty;
 
@@ -50,4 +52,6 @@ public class PrintBridgeOptions {
 
     [Required]
     public string HardnessCallbackUrl { get; init; } = string.Empty;
+
+    public string? ApiAuthToken { get; init; }
 }

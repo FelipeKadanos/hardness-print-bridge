@@ -86,6 +86,7 @@ jobs:
           New-Item -ItemType Directory -Path "$packagePath/scripts" -Force | Out-Null
           Copy-Item scripts/install-service.ps1 "$packagePath/scripts/install-service.ps1" -Force
           Copy-Item scripts/uninstall-service.ps1 "$packagePath/scripts/uninstall-service.ps1" -Force
+          Copy-Item scripts/write-agent-config.ps1 "$packagePath/scripts/write-agent-config.ps1" -Force
 
       - name: Create portable ZIP
         if: startsWith(github.ref, 'refs/tags/v')

@@ -15,6 +15,10 @@ public static class RuntimePaths {
         return Path.Combine(GetProgramDataRoot(), "status", "agent-status.json");
     }
 
+    public static string GetAgentConfigurationPath() {
+        return Path.Combine(GetProgramDataRoot(), "config", "agent-settings.json");
+    }
+
     public static string GetAppSettingsPath() {
         return Path.Combine(GetAppDataRoot(), "app", "settings.json");
     }

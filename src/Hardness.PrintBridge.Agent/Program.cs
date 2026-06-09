@@ -7,9 +7,20 @@ using Hardness.PrintBridge.Agent.Infrastructure.Runtime;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Hardness.PrintBridge.Agent;
+using Hardness.PrintBridge.Contracts.Runtime;
+using Microsoft.Extensions.FileProviders;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+var agentConfigurationPath = RuntimePaths.GetAgentConfigurationPath();
+var agentConfigurationDirectory = Path.GetDirectoryName(agentConfigurationPath);
+if (!string.IsNullOrWhiteSpace(agentConfigurationDirectory)) {
+    builder.Configuration.AddJsonFile(
+        new PhysicalFileProvider(agentConfigurationDirectory),
+        Path.GetFileName(agentConfigurationPath),
+        optional: true,
+        reloadOnChange: true);
+}
 builder.Services.AddWindowsService(options => {
     options.ServiceName = "Hardness Print Bridge Agent";
 });

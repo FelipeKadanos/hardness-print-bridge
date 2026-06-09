@@ -1,6 +1,7 @@
 using Hardness.PrintBridge.App.Services;
 using Hardness.PrintBridge.App.Status;
 using Hardness.PrintBridge.App.Update;
+using Hardness.PrintBridge.Contracts.Configuration;
 using Hardness.PrintBridge.Contracts.Runtime;
 
 namespace Hardness.PrintBridge.App.UI;
@@ -10,23 +11,32 @@ public sealed class TrayApplicationContext : ApplicationContext {
     private static readonly TimeSpan StaleStatusThreshold = TimeSpan.FromSeconds(30);
 
     private readonly IAppSettingsStore _appSettingsStore;
+    private readonly IAgentConfigurationStore _agentConfigurationStore;
+    private readonly IPrinterCatalogService _printerCatalogService;
     private readonly IStartupService _startupService;
     private readonly IAgentStatusSource _agentStatusSource;
     private readonly IAgentControlService _agentControlService;
     private readonly IUpdateService _updateService;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _statusTimer;
+    private readonly System.Windows.Forms.Timer _startupTimer;
     private readonly MainForm _mainForm;
+    private ToolStripMenuItem? _restartAgentMenuItem;
     private AppSettings _settings = new();
     private DateTimeOffset _lastUpdateCheckAtUtc = DateTimeOffset.MinValue;
+    private bool _restartAgentInProgress;
 
     public TrayApplicationContext(
         IAppSettingsStore appSettingsStore,
+        IAgentConfigurationStore agentConfigurationStore,
+        IPrinterCatalogService printerCatalogService,
         IStartupService startupService,
         IAgentStatusSource agentStatusSource,
         IAgentControlService agentControlService,
         IUpdateService updateService) {
         _appSettingsStore = appSettingsStore;
+        _agentConfigurationStore = agentConfigurationStore;
+        _printerCatalogService = printerCatalogService;
         _startupService = startupService;
         _agentStatusSource = agentStatusSource;
         _agentControlService = agentControlService;
@@ -36,10 +46,11 @@ public sealed class TrayApplicationContext : ApplicationContext {
         _mainForm.StartWithWindowsChanged += async (_, enabled) => await UpdateStartupAsync(enabled);
         _mainForm.CheckForUpdatesRequested += async (_, _) => await CheckForUpdatesInteractiveAsync();
         _mainForm.RestartAgentRequested += async (_, _) => await RestartAgentInteractiveAsync();
+        _mainForm.SaveAgentConfigurationRequested += async (_, eventArgs) => await SaveAgentConfigurationInteractiveAsync(eventArgs.Configuration);
 
         _notifyIcon = new NotifyIcon {
             Visible = true,
-            Icon = SystemIcons.Application,
+            Icon = AppIconProvider.GetAppIcon(),
             Text = "Hardness Print Bridge",
             ContextMenuStrip = BuildContextMenu()
         };
@@ -50,26 +61,48 @@ public sealed class TrayApplicationContext : ApplicationContext {
         };
         _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
 
+        _startupTimer = new System.Windows.Forms.Timer {
+            Interval = 1
+        };
+        _startupTimer.Tick += OnStartupTimerTick;
+        _startupTimer.Start();
+    }
+
+    private void OnStartupTimerTick(object? sender, EventArgs e) {
+        _startupTimer.Stop();
+        _startupTimer.Tick -= OnStartupTimerTick;
         _ = InitializeAsync();
     }
 
     private async Task InitializeAsync() {
-        _settings = await _appSettingsStore.LoadAsync(CancellationToken.None);
-        var startupEnabled = _startupService.IsEnabled();
-        if (startupEnabled != _settings.StartWithWindows) {
-            _settings = _settings with { StartWithWindows = startupEnabled };
-            await _appSettingsStore.SaveAsync(_settings, CancellationToken.None);
+        try {
+            _settings = await _appSettingsStore.LoadAsync(CancellationToken.None);
+            var startupEnabled = _startupService.IsEnabled();
+            if (startupEnabled != _settings.StartWithWindows) {
+                _settings = _settings with { StartWithWindows = startupEnabled };
+                await _appSettingsStore.SaveAsync(_settings, CancellationToken.None);
+            }
+
+            _mainForm.ApplySettings(_settings);
+            var agentConfiguration = await _agentConfigurationStore.LoadAsync(CancellationToken.None);
+            _mainForm.ApplyAgentConfiguration(agentConfiguration, _printerCatalogService.GetInstalledPrinters());
+            _statusTimer.Start();
+            await RefreshStatusAsync();
+
+            if (_settings.CheckForUpdatesOnStartup) {
+                _ = CheckForUpdatesSilentlyAsync();
+            }
+
+            ShowMainForm();
+        } catch (Exception ex) {
+            MessageBox.Show(
+                _mainForm,
+                ex.Message,
+                "Falha ao iniciar o Hardness Print Bridge",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            ExitApplication();
         }
-
-        _mainForm.ApplySettings(_settings);
-        _statusTimer.Start();
-        await RefreshStatusAsync();
-
-        if (_settings.CheckForUpdatesOnStartup) {
-            _ = CheckForUpdatesSilentlyAsync();
-        }
-
-        ShowMainForm();
     }
 
     private ContextMenuStrip BuildContextMenu() {
@@ -77,7 +110,8 @@ public sealed class TrayApplicationContext : ApplicationContext {
         menu.Items.Add("Abrir aplicativo", null, (_, _) => ShowMainForm());
         menu.Items.Add("Configurações", null, (_, _) => ShowMainForm());
         menu.Items.Add("Verificar atualizações", null, async (_, _) => await CheckForUpdatesInteractiveAsync());
-        menu.Items.Add("Reiniciar serviço", null, async (_, _) => await RestartAgentInteractiveAsync());
+        _restartAgentMenuItem = new ToolStripMenuItem("Reiniciar serviço", null, async (_, _) => await RestartAgentInteractiveAsync());
+        menu.Items.Add(_restartAgentMenuItem);
         menu.Items.Add("Sair", null, (_, _) => ExitApplication());
         return menu;
     }
@@ -108,20 +142,13 @@ public sealed class TrayApplicationContext : ApplicationContext {
 
     private void ApplyTrayPresentation(AgentStatusSnapshot? snapshot, bool stale) {
         if (snapshot is null) {
-            _notifyIcon.Icon = SystemIcons.Application;
+            _notifyIcon.Icon = AppIconProvider.GetAppIcon();
             _notifyIcon.Text = "HPB: aguardando status do Agent";
             return;
         }
 
         var effectiveState = stale ? AgentState.Warning : snapshot.State;
-        _notifyIcon.Icon = effectiveState switch {
-            AgentState.Starting => SystemIcons.Shield,
-            AgentState.Running => SystemIcons.Information,
-            AgentState.Warning => SystemIcons.Warning,
-            AgentState.Error => SystemIcons.Error,
-            AgentState.Stopped => SystemIcons.Application,
-            _ => SystemIcons.Application
-        };
+        _notifyIcon.Icon = AppIconProvider.GetStatusIcon(effectiveState);
 
         var tooltip = $"HPB: {effectiveState}";
         if (!string.IsNullOrWhiteSpace(snapshot.Message)) {
@@ -138,6 +165,14 @@ public sealed class TrayApplicationContext : ApplicationContext {
     }
 
     private async Task RestartAgentInteractiveAsync() {
+        if (_restartAgentInProgress) {
+            return;
+        }
+
+        _restartAgentInProgress = true;
+        _restartAgentMenuItem!.Enabled = false;
+        _mainForm.ShowBusyOverlay("Reiniciando");
+
         try {
             await _agentControlService.RestartAsync(CancellationToken.None);
             _notifyIcon.ShowBalloonTip(3000, "Hardness Print Bridge", "Solicitação de reinício do Agent enviada.", ToolTipIcon.Info);
@@ -146,6 +181,29 @@ public sealed class TrayApplicationContext : ApplicationContext {
                 _mainForm,
                 ex.Message,
                 "Reiniciar serviço",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        } finally {
+            _mainForm.HideBusyOverlay();
+            _restartAgentMenuItem!.Enabled = true;
+            _restartAgentInProgress = false;
+        }
+    }
+
+    private async Task SaveAgentConfigurationInteractiveAsync(AgentConfigurationModel configuration) {
+        try {
+            await _agentConfigurationStore.SaveAsync(configuration, CancellationToken.None);
+            MessageBox.Show(
+                _mainForm,
+                "Configuração salva com sucesso. Reinicie o Agent para aplicar as alteracoes.",
+                "Configuração do Agent",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        } catch (Exception ex) {
+            MessageBox.Show(
+                _mainForm,
+                ex.Message,
+                "Configuração do Agent",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
