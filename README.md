@@ -35,6 +35,14 @@ dotnet build Hardness.PrintBridge.slnx -c Debug
 dotnet run --project src/Hardness.PrintBridge.Agent
 ```
 
+## Logs do Agent
+
+- todos os logs do `Agent` são gravados em `DIR\logs\agent.log`
+- em desenvolvimento pelo repositório, o caminho fica em `hardness-print-bridge\logs\agent.log`
+- fora do repositório, `DIR` = pasta onde o `Hardness.PrintBridge.Agent.exe` está rodando
+- o caminho do log não é configurável
+- quando `agent.log` passa de `10 MB`, o próprio arquivo é truncado e continua sendo reutilizado
+
 ## Configuração local
 
 ```powershell
@@ -136,6 +144,7 @@ Restart-Service HardnessPrintBridgeAgent
 - arquivos remotos são baixados para `inbox` com escrita atômica
 - arquivos já existentes em `inbox/processing/printed/error` são ignorados
 - cache local de vistos (`RemoteSeenCachePath`) evita reingestão
+- a aba `Logs` do `App` acompanha em tempo real o arquivo fixo `DIR\logs\agent.log`
 
 ## Status do Agent
 

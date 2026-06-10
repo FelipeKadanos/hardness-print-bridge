@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Hardness.PrintBridge.App.Services;
 using Hardness.PrintBridge.App.Status;
 using Hardness.PrintBridge.App.Update;
@@ -9,21 +10,27 @@ namespace Hardness.PrintBridge.App.UI;
 public sealed class TrayApplicationContext : ApplicationContext {
     private static readonly TimeSpan StatusPollInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan StaleStatusThreshold = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan LogPollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AgentStartupGracePeriod = TimeSpan.FromSeconds(30);
 
     private readonly IAppSettingsStore _appSettingsStore;
     private readonly IAgentConfigurationStore _agentConfigurationStore;
     private readonly IPrinterCatalogService _printerCatalogService;
     private readonly IStartupService _startupService;
     private readonly IAgentStatusSource _agentStatusSource;
+    private readonly IAgentLogSource _agentLogSource;
     private readonly IAgentControlService _agentControlService;
     private readonly IUpdateService _updateService;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _statusTimer;
+    private readonly System.Windows.Forms.Timer _logTimer;
     private readonly System.Windows.Forms.Timer _startupTimer;
     private readonly MainForm _mainForm;
     private ToolStripMenuItem? _restartAgentMenuItem;
     private AppSettings _settings = new();
     private DateTimeOffset _lastUpdateCheckAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _awaitAgentStatusUntilUtc = DateTimeOffset.MinValue;
+    private string? _agentStartupFailureMessage;
     private bool _restartAgentInProgress;
 
     public TrayApplicationContext(
@@ -32,6 +39,7 @@ public sealed class TrayApplicationContext : ApplicationContext {
         IPrinterCatalogService printerCatalogService,
         IStartupService startupService,
         IAgentStatusSource agentStatusSource,
+        IAgentLogSource agentLogSource,
         IAgentControlService agentControlService,
         IUpdateService updateService) {
         _appSettingsStore = appSettingsStore;
@@ -39,6 +47,7 @@ public sealed class TrayApplicationContext : ApplicationContext {
         _printerCatalogService = printerCatalogService;
         _startupService = startupService;
         _agentStatusSource = agentStatusSource;
+        _agentLogSource = agentLogSource;
         _agentControlService = agentControlService;
         _updateService = updateService;
 
@@ -60,6 +69,11 @@ public sealed class TrayApplicationContext : ApplicationContext {
             Interval = (int)StatusPollInterval.TotalMilliseconds
         };
         _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
+
+        _logTimer = new System.Windows.Forms.Timer {
+            Interval = (int)LogPollInterval.TotalMilliseconds
+        };
+        _logTimer.Tick += async (_, _) => await RefreshLogsAsync();
 
         _startupTimer = new System.Windows.Forms.Timer {
             Interval = 1
@@ -86,8 +100,13 @@ public sealed class TrayApplicationContext : ApplicationContext {
             _mainForm.ApplySettings(_settings);
             var agentConfiguration = await _agentConfigurationStore.LoadAsync(CancellationToken.None);
             _mainForm.ApplyAgentConfiguration(agentConfiguration, _printerCatalogService.GetInstalledPrinters());
+
+            await EnsureAgentRunningAsync();
+
             _statusTimer.Start();
+            _logTimer.Start();
             await RefreshStatusAsync();
+            await RefreshLogsAsync();
 
             if (_settings.CheckForUpdatesOnStartup) {
                 _ = CheckForUpdatesSilentlyAsync();
@@ -129,33 +148,112 @@ public sealed class TrayApplicationContext : ApplicationContext {
     }
 
     private async Task RefreshStatusAsync() {
+        var hostStatus = await _agentControlService.GetCurrentStatusAsync(CancellationToken.None);
         var snapshot = await _agentStatusSource.GetCurrentAsync(CancellationToken.None);
-        var stale = snapshot is not null && DateTimeOffset.UtcNow - snapshot.UpdatedAtUtc > StaleStatusThreshold;
+        var displayStatus = ResolveDisplayStatus(hostStatus, snapshot);
 
-        _mainForm.UpdateStatus(snapshot, stale);
-        ApplyTrayPresentation(snapshot, stale);
+        _mainForm.UpdateStatus(displayStatus);
+        ApplyTrayPresentation(displayStatus);
 
         if (DateTimeOffset.UtcNow - _lastUpdateCheckAtUtc >= TimeSpan.FromHours(Math.Max(_settings.UpdateCheckIntervalHours, 1))) {
             _ = CheckForUpdatesSilentlyAsync();
         }
     }
 
-    private void ApplyTrayPresentation(AgentStatusSnapshot? snapshot, bool stale) {
-        if (snapshot is null) {
-            _notifyIcon.Icon = AppIconProvider.GetAppIcon();
-            _notifyIcon.Text = "HPB: aguardando status do Agent";
-            return;
+    private async Task RefreshLogsAsync() {
+        try {
+            var snapshot = await _agentLogSource.GetSnapshotAsync(CancellationToken.None);
+            _mainForm.UpdateLogs(snapshot.SourcePath, snapshot.Content);
+        } catch (Exception ex) {
+            _mainForm.UpdateLogs(null, $"Falha ao carregar logs: {ex.Message}");
+        }
+    }
+
+    private AgentDisplayStatus ResolveDisplayStatus(AgentHostStatus hostStatus, AgentStatusSnapshot? snapshot) {
+        var liveSnapshot = TryResolveLiveSnapshot(snapshot);
+
+        if (hostStatus.State == AgentState.Stopped || hostStatus.State == AgentState.Error) {
+            return new AgentDisplayStatus(
+                hostStatus.State,
+                _agentStartupFailureMessage ?? hostStatus.Message,
+                snapshot?.UpdatedAtUtc);
         }
 
-        var effectiveState = stale ? AgentState.Warning : snapshot.State;
-        _notifyIcon.Icon = AppIconProvider.GetStatusIcon(effectiveState);
+        if (liveSnapshot is not null) {
+            var isStale = DateTimeOffset.UtcNow - liveSnapshot.UpdatedAtUtc > StaleStatusThreshold;
+            if (isStale) {
+                return new AgentDisplayStatus(
+                    AgentState.Warning,
+                    "Agent sem atualização recente de status.",
+                    liveSnapshot.UpdatedAtUtc);
+            }
 
-        var tooltip = $"HPB: {effectiveState}";
-        if (!string.IsNullOrWhiteSpace(snapshot.Message)) {
-            tooltip = $"{tooltip} - {snapshot.Message}";
+            return new AgentDisplayStatus(
+                liveSnapshot.State,
+                string.IsNullOrWhiteSpace(liveSnapshot.Message) ? hostStatus.Message : liveSnapshot.Message!,
+                liveSnapshot.UpdatedAtUtc);
+        }
+
+        if (DateTimeOffset.UtcNow <= _awaitAgentStatusUntilUtc || hostStatus.State == AgentState.Starting) {
+            return new AgentDisplayStatus(
+                AgentState.Starting,
+                _agentStartupFailureMessage ?? hostStatus.Message,
+                snapshot?.UpdatedAtUtc);
+        }
+
+        if (snapshot is not null) {
+            return new AgentDisplayStatus(
+                AgentState.Warning,
+                "O último status disponível não pertence a um processo ativo do Agent.",
+                snapshot.UpdatedAtUtc);
+        }
+
+        return new AgentDisplayStatus(
+            AgentState.Stopped,
+            _agentStartupFailureMessage ?? "Agent não está em execução.",
+            null);
+    }
+
+    private static AgentStatusSnapshot? TryResolveLiveSnapshot(AgentStatusSnapshot? snapshot) {
+        if (snapshot?.ProcessId is null || snapshot.ProcessStartedAtUtc is null) {
+            return null;
+        }
+
+        try {
+            using var process = Process.GetProcessById(snapshot.ProcessId.Value);
+            if (process.HasExited) {
+                return null;
+            }
+
+            var actualStartTimeUtc = process.StartTime.ToUniversalTime();
+            var difference = (actualStartTimeUtc - snapshot.ProcessStartedAtUtc.Value.UtcDateTime).Duration();
+            return difference <= TimeSpan.FromSeconds(2) ? snapshot : null;
+        } catch {
+            return null;
+        }
+    }
+
+    private void ApplyTrayPresentation(AgentDisplayStatus status) {
+        _notifyIcon.Icon = AppIconProvider.GetStatusIcon(status.State);
+
+        var tooltip = $"HPB: {status.State}";
+        if (!string.IsNullOrWhiteSpace(status.Message)) {
+            tooltip = $"{tooltip} - {status.Message}";
         }
 
         _notifyIcon.Text = tooltip.Length > 63 ? tooltip[..63] : tooltip;
+    }
+
+    private async Task EnsureAgentRunningAsync() {
+        _agentStartupFailureMessage = null;
+
+        try {
+            await _agentControlService.EnsureRunningAsync(CancellationToken.None);
+            _awaitAgentStatusUntilUtc = DateTimeOffset.UtcNow.Add(AgentStartupGracePeriod);
+        } catch (Exception ex) {
+            _agentStartupFailureMessage = ex.Message;
+            _awaitAgentStatusUntilUtc = DateTimeOffset.MinValue;
+        }
     }
 
     private async Task UpdateStartupAsync(bool enabled) {
@@ -171,12 +269,15 @@ public sealed class TrayApplicationContext : ApplicationContext {
 
         _restartAgentInProgress = true;
         _restartAgentMenuItem!.Enabled = false;
-        _mainForm.ShowBusyOverlay("Reiniciando");
+        _mainForm.SetInteractionLocked(true);
 
         try {
             await _agentControlService.RestartAsync(CancellationToken.None);
+            _agentStartupFailureMessage = null;
+            _awaitAgentStatusUntilUtc = DateTimeOffset.UtcNow.Add(AgentStartupGracePeriod);
             _notifyIcon.ShowBalloonTip(3000, "Hardness Print Bridge", "Solicitação de reinício do Agent enviada.", ToolTipIcon.Info);
         } catch (Exception ex) {
+            _agentStartupFailureMessage = ex.Message;
             MessageBox.Show(
                 _mainForm,
                 ex.Message,
@@ -184,7 +285,7 @@ public sealed class TrayApplicationContext : ApplicationContext {
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         } finally {
-            _mainForm.HideBusyOverlay();
+            _mainForm.SetInteractionLocked(false);
             _restartAgentMenuItem!.Enabled = true;
             _restartAgentInProgress = false;
         }
@@ -268,6 +369,7 @@ public sealed class TrayApplicationContext : ApplicationContext {
 
     private void ExitApplication() {
         _statusTimer.Stop();
+        _logTimer.Stop();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _mainForm.AllowExit();

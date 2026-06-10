@@ -4,7 +4,7 @@
 - [x] Inicializar repositório do serviço Windows (estrutura de pastas e projeto).
 - [x] Definir arquivo de configuração (`.env` ou `appsettings.json`) com todas as chaves do MVP.
 - [x] Criar bootstrap da aplicação com leitura de config + validação de configuração obrigatória.
-- [x] Estruturar logging (console + arquivo com rotação).
+- [x] Estruturar logging (console + arquivo fixo único `logs\agent.log`).
 
 ## Fase 1 — Núcleo da fila
 - [x] Implementar scanner/poller da `inbox` com intervalo configurável.

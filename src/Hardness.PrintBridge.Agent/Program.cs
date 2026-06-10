@@ -9,6 +9,13 @@ using Serilog;
 using Hardness.PrintBridge.Agent;
 using Hardness.PrintBridge.Contracts.Runtime;
 using Microsoft.Extensions.FileProviders;
+using Serilog.Events;
+using System.Threading;
+
+using var singleInstanceMutex = new Mutex(initiallyOwned: true, @"Global\HardnessPrintBridgeAgent", out var createdNew);
+if (!createdNew) {
+    return;
+}
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
@@ -40,11 +47,20 @@ builder.Services
         "PrintBridge:RemoteDownloadUrlTemplate is required when remote source is enabled.")
     .ValidateOnStart();
 
+var agentLogPath = RuntimePaths.GetAgentLogPath();
 builder.Services.AddSerilog((services, configuration) => {
     configuration
+        .MinimumLevel.Is(LogEventLevel.Information)
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
         .ReadFrom.Configuration(builder.Configuration)
         .ReadFrom.Services(services)
+        .WriteTo.Sink(new FixedSizeSingleFileLogSink(agentLogPath, 10 * 1024 * 1024))
         .Enrich.FromLogContext();
+
+    if (builder.Environment.IsDevelopment()) {
+        configuration.WriteTo.Console();
+    }
 });
 
 builder.Services.AddSingleton<IPrintJobParser, EtqPrintJobParser>();
@@ -78,8 +94,9 @@ var options = host.Services.GetRequiredService<IOptions<PrintBridgeOptions>>().V
 host.Services.GetRequiredService<ILoggerFactory>()
     .CreateLogger("Startup")
     .LogInformation(
-        "PrintBridge starting with watch path '{WatchPath}' and default printer '{DefaultPrinterName}'.",
+        "PrintBridge starting with watch path '{WatchPath}', default printer '{DefaultPrinterName}' and log path '{LogPath}'.",
         options.WatchPath,
-        options.DefaultPrinterName);
+        options.DefaultPrinterName,
+        agentLogPath);
 
 host.Run();

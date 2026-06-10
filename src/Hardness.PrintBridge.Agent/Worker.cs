@@ -4,6 +4,7 @@ using Hardness.PrintBridge.Agent.Infrastructure.Printing;
 using Hardness.PrintBridge.Agent.Infrastructure.Runtime;
 using Hardness.PrintBridge.Contracts.Runtime;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 
 namespace Hardness.PrintBridge.Agent;
 
@@ -17,6 +18,7 @@ public class Worker(
     AgentStatusWriter statusWriter,
     IHardnessCallbackClient callbackClient) : BackgroundService {
     private readonly PrintBridgeOptions _options = options.Value;
+    private readonly DateTimeOffset _processStartedAtUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         EnsureDirectories();
@@ -291,6 +293,8 @@ public class Worker(
                 State = state,
                 Message = message,
                 UpdatedAtUtc = DateTimeOffset.UtcNow,
+                ProcessId = Environment.ProcessId,
+                ProcessStartedAtUtc = _processStartedAtUtc,
                 ProcessedCount = processedCount,
                 FailedCount = failedCount,
                 RemoteDownloaded = remoteDownloaded,

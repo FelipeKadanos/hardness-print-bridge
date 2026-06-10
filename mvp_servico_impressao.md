@@ -70,6 +70,12 @@ Com retry simples no envio HTTP.
 - `PollIntervalMs`
 - `HardnessCallbackUrl`
 
+Logs:
+- todos os logs do agente são gravados em `DIR\logs\agent.log`
+- em desenvolvimento pelo repositório, o caminho fica em `hardness-print-bridge\logs\agent.log`
+- fora do repositório, `DIR` = pasta de execução do agente
+- o arquivo é único e fixo, com truncamento no próprio `agent.log` quando passar de `10 MB`
+
 Exemplo atual de diretórios locais no ambiente de desenvolvimento:
 - `C:\Hardness-Print-Brige\print-agent\inbox`
 - `C:\Hardness-Print-Brige\print-agent\processing`

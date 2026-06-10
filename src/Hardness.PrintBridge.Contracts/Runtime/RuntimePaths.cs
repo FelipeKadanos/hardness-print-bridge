@@ -26,4 +26,40 @@ public static class RuntimePaths {
     public static string GetUpdateWorkspacePath() {
         return Path.Combine(GetAppDataRoot(), "update");
     }
+
+    public static string GetAgentLogDirectory(string? baseDirectory = null) {
+        return Path.Combine(GetAgentRuntimeRoot(baseDirectory), "logs");
+    }
+
+    public static string GetAgentLogPath(string? baseDirectory = null) {
+        return Path.Combine(GetAgentLogDirectory(baseDirectory), "agent.log");
+    }
+
+    private static string GetAgentRuntimeRoot(string? baseDirectory = null) {
+        if (!string.IsNullOrWhiteSpace(baseDirectory)) {
+            return baseDirectory;
+        }
+
+        return TryFindSolutionRoot(AppContext.BaseDirectory)
+            ?? TryFindSolutionRoot(Environment.CurrentDirectory)
+            ?? AppContext.BaseDirectory;
+    }
+
+    private static string? TryFindSolutionRoot(string startPath) {
+        var directory = new DirectoryInfo(startPath);
+        if (!directory.Exists) {
+            directory = directory.Parent;
+        }
+
+        while (directory is not null) {
+            var solutionPath = Path.Combine(directory.FullName, "Hardness.PrintBridge.slnx");
+            if (File.Exists(solutionPath)) {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
 }

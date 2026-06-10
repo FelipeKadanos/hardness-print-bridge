@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text.Json;
+using Hardness.PrintBridge.Contracts.Runtime;
 
 namespace Hardness.PrintBridge.App.Services;
 
@@ -6,6 +8,76 @@ public sealed class AgentControlService : IAgentControlService {
     private const string ServiceName = "HardnessPrintBridgeAgent";
     private static readonly TimeSpan ServiceTransitionTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ServicePollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private int? _lastLaunchedProcessId;
+    private DateTimeOffset? _lastLaunchedProcessStartedAtUtc;
+
+    public async Task EnsureRunningAsync(CancellationToken cancellationToken) {
+        if (await ServiceExistsAsync(cancellationToken)) {
+            var serviceState = await QueryServiceStateAsync(cancellationToken);
+            if (serviceState == ServiceState.Running || serviceState == ServiceState.StartPending) {
+                return;
+            }
+
+            await StartServiceAndWaitAsync(cancellationToken);
+            return;
+        }
+
+        if (TryGetLiveAgentProcess() is not null) {
+            return;
+        }
+
+        LaunchAgentProcess();
+    }
+
+    public async Task<AgentHostStatus> GetCurrentStatusAsync(CancellationToken cancellationToken) {
+        if (await ServiceExistsAsync(cancellationToken)) {
+            var serviceState = await QueryServiceStateAsync(cancellationToken);
+            return serviceState switch {
+                ServiceState.Running => new AgentHostStatus(
+                    AgentState.Running,
+                    "Serviço do Agent em execução.",
+                    IsServiceMode: true),
+                ServiceState.StartPending => new AgentHostStatus(
+                    AgentState.Starting,
+                    "Serviço do Agent iniciando.",
+                    IsServiceMode: true),
+                ServiceState.StopPending => new AgentHostStatus(
+                    AgentState.Warning,
+                    "Serviço do Agent em transição de parada.",
+                    IsServiceMode: true),
+                _ => new AgentHostStatus(
+                    AgentState.Stopped,
+                    "Serviço do Agent parado.",
+                    IsServiceMode: true)
+            };
+        }
+
+        var liveProcess = TryGetLiveAgentProcess();
+        if (liveProcess is not null) {
+            return new AgentHostStatus(
+                AgentState.Running,
+                "Processo do Agent em execução.",
+                IsServiceMode: false,
+                liveProcess.ProcessId,
+                liveProcess.ProcessStartedAtUtc);
+        }
+
+        if (TryGetTrackedLaunchedProcess() is { } launchedProcess) {
+            return new AgentHostStatus(
+                AgentState.Starting,
+                "Processo do Agent iniciado; aguardando publicação de status.",
+                IsServiceMode: false,
+                launchedProcess.ProcessId,
+                launchedProcess.ProcessStartedAtUtc);
+        }
+
+        return new AgentHostStatus(
+            AgentState.Stopped,
+            "Agent não está em execução.",
+            IsServiceMode: false);
+    }
 
     public async Task RestartAsync(CancellationToken cancellationToken) {
         if (await ServiceExistsAsync(cancellationToken)) {
@@ -14,16 +86,8 @@ public sealed class AgentControlService : IAgentControlService {
             return;
         }
 
-        var executablePath = TryResolveAgentExecutablePath();
-        if (string.IsNullOrWhiteSpace(executablePath)) {
-            throw new FileNotFoundException("Agent executable not found for restart.");
-        }
-
-        Process.Start(new ProcessStartInfo {
-            FileName = executablePath,
-            UseShellExecute = true,
-            WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory
-        });
+        await StopLiveProcessIfNeededAsync(cancellationToken);
+        LaunchAgentProcess();
     }
 
     private static async Task<bool> ServiceExistsAsync(CancellationToken cancellationToken) {
@@ -47,13 +111,6 @@ public sealed class AgentControlService : IAgentControlService {
         }
 
         await WaitForServiceStateAsync(ServiceState.Running, cancellationToken);
-    }
-
-    private static async Task RunScCommandAsync(string arguments, CancellationToken cancellationToken) {
-        var result = await RunProcessAsync("sc.exe", arguments, cancellationToken);
-        if (result.ExitCode != 0) {
-            throw new InvalidOperationException(BuildProcessFailureMessage("sc.exe", arguments, result));
-        }
     }
 
     private static async Task<ProcessResult> RunProcessAsync(
@@ -142,6 +199,99 @@ public sealed class AgentControlService : IAgentControlService {
         return int.TryParse(firstToken, out var parsed) ? parsed : null;
     }
 
+    private void LaunchAgentProcess() {
+        var executablePath = TryResolveAgentExecutablePath();
+        if (string.IsNullOrWhiteSpace(executablePath)) {
+            throw new FileNotFoundException("Agent executable not found for startup.");
+        }
+
+        var process = Process.Start(new ProcessStartInfo {
+            FileName = executablePath,
+            UseShellExecute = true,
+            WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory
+        });
+
+        if (process is not null) {
+            _lastLaunchedProcessId = process.Id;
+            try {
+                _lastLaunchedProcessStartedAtUtc = process.StartTime.ToUniversalTime();
+            } catch {
+                _lastLaunchedProcessStartedAtUtc = DateTimeOffset.UtcNow;
+            }
+        } else {
+            _lastLaunchedProcessId = null;
+            _lastLaunchedProcessStartedAtUtc = null;
+        }
+    }
+
+    private async Task StopLiveProcessIfNeededAsync(CancellationToken cancellationToken) {
+        var liveProcess = TryGetLiveAgentProcess();
+        if (liveProcess is null) {
+            return;
+        }
+
+        try {
+            using var process = Process.GetProcessById(liveProcess.ProcessId);
+            if (process.HasExited) {
+                return;
+            }
+
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(cancellationToken);
+        } catch (ArgumentException) {
+        }
+    }
+
+    private LiveAgentProcess? TryGetTrackedLaunchedProcess() {
+        if (_lastLaunchedProcessId is null || _lastLaunchedProcessStartedAtUtc is null) {
+            return null;
+        }
+
+        return TryResolveLiveProcess(_lastLaunchedProcessId.Value, _lastLaunchedProcessStartedAtUtc.Value)
+            ? new LiveAgentProcess(_lastLaunchedProcessId.Value, _lastLaunchedProcessStartedAtUtc.Value)
+            : null;
+    }
+
+    private static LiveAgentProcess? TryGetLiveAgentProcess() {
+        var snapshot = TryReadSnapshot();
+        if (snapshot?.ProcessId is null || snapshot.ProcessStartedAtUtc is null) {
+            return null;
+        }
+
+        return TryResolveLiveProcess(snapshot.ProcessId.Value, snapshot.ProcessStartedAtUtc.Value)
+            ? new LiveAgentProcess(snapshot.ProcessId.Value, snapshot.ProcessStartedAtUtc.Value)
+            : null;
+    }
+
+    private static bool TryResolveLiveProcess(int processId, DateTimeOffset startedAtUtc) {
+        try {
+            using var process = Process.GetProcessById(processId);
+            if (process.HasExited) {
+                return false;
+            }
+
+            var actualStart = process.StartTime.ToUniversalTime();
+            var difference = (actualStart - startedAtUtc.UtcDateTime).Duration();
+            return difference <= TimeSpan.FromSeconds(2);
+        } catch {
+            return false;
+        }
+    }
+
+    private static AgentStatusSnapshot? TryReadSnapshot() {
+        var path = RuntimePaths.GetAgentStatusPath();
+        if (!File.Exists(path)) {
+            return null;
+        }
+
+        try {
+            var json = File.ReadAllText(path);
+            return JsonSerializer.Deserialize<AgentStatusSnapshot>(json, JsonOptions);
+        } catch {
+            return null;
+        }
+    }
+
     private static string? TryResolveAgentExecutablePath() {
         var candidates = new[] {
             Path.Combine(AppContext.BaseDirectory, "Hardness.PrintBridge.Agent.exe"),
@@ -166,12 +316,12 @@ public sealed class AgentControlService : IAgentControlService {
 
     private static bool IsServiceAlreadyStopped(ProcessResult result) {
         return ContainsErrorCode(result, 1062)
-            || result.StandardOutput.Contains("O serviço não foi iniciado.", StringComparison.OrdinalIgnoreCase);
+            || result.StandardOutput.Contains("O serviÃ§o nÃ£o foi iniciado.", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsServiceAlreadyRunning(ProcessResult result) {
         return ContainsErrorCode(result, 1056)
-            || result.StandardOutput.Contains("Uma instância do serviço já está sendo executada.", StringComparison.OrdinalIgnoreCase);
+            || result.StandardOutput.Contains("Uma instÃ¢ncia do serviÃ§o jÃ¡ estÃ¡ sendo executada.", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ContainsErrorCode(ProcessResult result, int code) {
@@ -181,6 +331,7 @@ public sealed class AgentControlService : IAgentControlService {
     }
 
     private sealed record ProcessResult(int ExitCode, string StandardOutput, string ErrorOutput);
+    private sealed record LiveAgentProcess(int ProcessId, DateTimeOffset ProcessStartedAtUtc);
 
     private enum ServiceState {
         Stopped,

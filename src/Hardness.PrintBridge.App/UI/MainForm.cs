@@ -1,7 +1,5 @@
 using Hardness.PrintBridge.App.Services;
 using Hardness.PrintBridge.Contracts.Configuration;
-using Hardness.PrintBridge.Contracts.Runtime;
-
 namespace Hardness.PrintBridge.App.UI;
 
 public sealed class MainForm : Form {
@@ -17,7 +15,8 @@ public sealed class MainForm : Form {
     private readonly TextBox _remoteDownloadUrlTemplateTextBox;
     private readonly TextBox _hardnessCallbackUrlTextBox;
     private readonly ComboBox _printerComboBox;
-    private BusyOverlayForm? _busyOverlayForm;
+    private readonly Label _logsSourceValueLabel;
+    private readonly TextBox _logsTextBox;
     private bool _allowClose;
 
     public event EventHandler<bool>? StartWithWindowsChanged;
@@ -59,9 +58,20 @@ public sealed class MainForm : Form {
             Dock = DockStyle.Top,
             DropDownStyle = ComboBoxStyle.DropDownList
         };
+        _logsSourceValueLabel = BuildValueLabel();
+        _logsTextBox = new TextBox {
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Both,
+            WordWrap = false,
+            Dock = DockStyle.Fill,
+            Font = new Font("Consolas", 10),
+            BackColor = Color.White
+        };
 
         tabs.TabPages.Add(BuildOverviewTab());
         tabs.TabPages.Add(BuildConfigurationTab());
+        tabs.TabPages.Add(BuildLogsTab());
 
         var container = new Panel {
             Dock = DockStyle.Fill,
@@ -110,36 +120,41 @@ public sealed class MainForm : Form {
         }
     }
 
-    public void UpdateStatus(AgentStatusSnapshot? snapshot, bool stale) {
-        if (snapshot is null) {
-            _statusValueLabel.Text = "Desconhecido";
-            _messageValueLabel.Text = "Nenhum status publicado pelo Agent ainda.";
-            _updatedAtValueLabel.Text = "-";
+    public void UpdateStatus(AgentDisplayStatus status) {
+        _statusValueLabel.Text = status.State;
+        _messageValueLabel.Text = string.IsNullOrWhiteSpace(status.Message)
+            ? "-"
+            : status.Message;
+        _updatedAtValueLabel.Text = status.UpdatedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-";
+    }
+
+    public void UpdateStatusUnavailable() {
+        _statusValueLabel.Text = "Desconhecido";
+        _messageValueLabel.Text = "Nenhum status publicado pelo Agent ainda.";
+        _updatedAtValueLabel.Text = "-";
+    }
+
+    public void UpdateLogs(string? sourcePath, string content) {
+        _logsSourceValueLabel.Text = string.IsNullOrWhiteSpace(sourcePath)
+            ? "Aguardando arquivo de log..."
+            : sourcePath;
+
+        var normalizedContent = content.Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
+        if (string.Equals(_logsTextBox.Text, normalizedContent, StringComparison.Ordinal)) {
             return;
         }
 
-        _statusValueLabel.Text = stale
-            ? $"{snapshot.State} (desatualizado)"
-            : snapshot.State;
-        _messageValueLabel.Text = string.IsNullOrWhiteSpace(snapshot.Message)
-            ? "-"
-            : snapshot.Message;
-        _updatedAtValueLabel.Text = snapshot.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
+        _logsTextBox.Text = normalizedContent;
+        _logsTextBox.SelectionStart = _logsTextBox.TextLength;
+        _logsTextBox.ScrollToCaret();
     }
 
     public void AllowExit() {
         _allowClose = true;
     }
 
-    public void ShowBusyOverlay(string baseText) {
-        _busyOverlayForm ??= new BusyOverlayForm(this);
-        _busyOverlayForm.ShowOverlay(baseText);
-        ToggleInteractiveControls(false);
-    }
-
-    public void HideBusyOverlay() {
-        _busyOverlayForm?.HideOverlay();
-        ToggleInteractiveControls(true);
+    public void SetInteractionLocked(bool locked) {
+        ToggleInteractiveControls(!locked);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e) {
@@ -149,7 +164,6 @@ public sealed class MainForm : Form {
             return;
         }
 
-        _busyOverlayForm?.Close();
         base.OnFormClosing(e);
     }
 
@@ -241,6 +255,31 @@ public sealed class MainForm : Form {
         content.Controls.Add(fields);
 
         var page = new TabPage("Configuracao");
+        page.Controls.Add(content);
+        return page;
+    }
+
+    private TabPage BuildLogsTab() {
+        var sourceLayout = new TableLayoutPanel {
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            RowCount = 1,
+            AutoSize = true,
+            Padding = new Padding(0, 12, 0, 12)
+        };
+        sourceLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        sourceLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        sourceLayout.Controls.Add(BuildCaptionLabel("Origem"), 0, 0);
+        sourceLayout.Controls.Add(_logsSourceValueLabel, 1, 0);
+
+        var content = new Panel {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12)
+        };
+        content.Controls.Add(_logsTextBox);
+        content.Controls.Add(sourceLayout);
+
+        var page = new TabPage("Logs");
         page.Controls.Add(content);
         return page;
     }

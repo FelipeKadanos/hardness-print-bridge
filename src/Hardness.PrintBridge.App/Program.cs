@@ -12,6 +12,7 @@ builder.Services.AddSingleton<IAgentConfigurationStore, JsonAgentConfigurationSt
 builder.Services.AddSingleton<IPrinterCatalogService, WindowsPrinterCatalogService>();
 builder.Services.AddSingleton<IStartupService, WindowsStartupService>();
 builder.Services.AddSingleton<IAgentStatusSource, JsonAgentStatusSource>();
+builder.Services.AddSingleton<IAgentLogSource, FileAgentLogSource>();
 builder.Services.AddSingleton<IAgentControlService, AgentControlService>();
 builder.Services.AddHttpClient<IUpdateService, GithubReleaseUpdateService>();
 builder.Services.AddSingleton<TrayApplicationContext>();
