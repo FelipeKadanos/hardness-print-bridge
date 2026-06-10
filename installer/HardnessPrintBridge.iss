@@ -50,7 +50,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\write-agent-config.ps1"" -QueueRootPath ""{code:GetQueueRootPath}"" -DefaultPrinterName ""{code:GetDefaultPrinterName}"" -RemoteListUrl ""{code:GetRemoteListUrl}"" -RemoteDownloadUrlTemplate ""{code:GetRemoteDownloadUrlTemplate}"" -HardnessCallbackUrl ""{code:GetHardnessCallbackUrl}"" -ApiAuthToken ""{code:GetApiAuthToken}"""; Flags: runhidden waituntilterminated
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\install-service.ps1"" -ExecutablePath ""{app}\{#MyAgentExeName}"""; Flags: runhidden waituntilterminated
-Filename: "{app}\{#MyAppExeName}"; Description: "Executar o aplicativo ao concluir a instalacao"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Executar o aplicativo ao concluir a instalacao"; Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\uninstall-service.ps1"""; Flags: runhidden waituntilterminated
