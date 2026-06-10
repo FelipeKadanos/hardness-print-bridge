@@ -36,7 +36,6 @@ public sealed class RemoteJobFetcher(
             var listResponse = await ListRemoteFilesAsync(cancellationToken);
             var remoteFiles = listResponse.Files
                 .Where(static f => !string.IsNullOrWhiteSpace(f.Name))
-                .Where(static f => f.Name.EndsWith(".etq", StringComparison.OrdinalIgnoreCase))
                 .Take(_options.RemoteMaxFilesPerCycle)
                 .ToArray();
 

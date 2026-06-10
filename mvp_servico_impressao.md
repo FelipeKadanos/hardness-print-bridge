@@ -12,10 +12,10 @@ Criar um agente local Windows que faça a ponte entre Hardness e impressoras do 
 O agente suporta dois modos:
 
 1. **Fila local (filesystem)**  
-   Lê `.etq` da `inbox` local/compartilhada.
+   Lê arquivos da `inbox` local/compartilhada.
 
 2. **Coleta remota via API dedicada (pull HTTP)**  
-   Busca lista de arquivos no servidor Hardness, baixa os `.etq`, salva na `inbox` local e processa no mesmo pipeline.
+   Busca lista de arquivos no servidor Hardness, baixa os arquivos, salva na `inbox` local e processa no mesmo pipeline.
 
 Endpoints remotos (exemplo):
 - Listagem: `GET /api/rel/list_files?...`

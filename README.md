@@ -2,7 +2,7 @@
 
 <div align="center">
 
-### Microserviço Windows para impressão automática de `.etq` via RAW spooler
+### Microserviço Windows para impressão automática de arquivos via RAW spooler
 
 [![Status](https://img.shields.io/badge/status-MVP%20em%20desenvolvimento-0a7ea4?style=for-the-badge)](#status)
 [![Plataforma](https://img.shields.io/badge/plataforma-Windows-0078D4?style=for-the-badge&logo=windows)](#)
@@ -17,7 +17,7 @@
 O **Hardness Print Bridge** conecta o Hardness às impressoras do cliente com dois modos de entrada:
 
 - **Fila local**: `inbox -> processing -> printed/error`
-- **Coleta remota**: o agente busca `.etq` via API HTTP, salva na `inbox` e usa o mesmo pipeline local
+- **Coleta remota**: o agente busca arquivos via API HTTP, salva na `inbox` e usa o mesmo pipeline local
 
 Arquitetura atual:
 

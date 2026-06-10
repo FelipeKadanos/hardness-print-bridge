@@ -4,13 +4,34 @@ using Hardness.PrintBridge.Agent.Domain;
 namespace Hardness.PrintBridge.Agent.Infrastructure.Printing;
 
 public sealed class EtqPrintJobParser : IPrintJobParser {
-    public PrintJob ParseEtq(string filePath) {
+    public PrintJob Parse(string filePath) {
         if (!File.Exists(filePath)) {
-            throw new FileNotFoundException("ETQ file not found.", filePath);
+            throw new FileNotFoundException("Print file not found.", filePath);
         }
 
         var fileName = Path.GetFileName(filePath);
         var requestedPrinter = TryExtractRequestedPrinter(fileName);
+        var extension = Path.GetExtension(filePath);
+
+        if (!extension.Equals(".etq", StringComparison.OrdinalIgnoreCase)) {
+            var rawPayload = File.ReadAllBytes(filePath);
+            if (rawPayload.Length == 0) {
+                throw new InvalidDataException($"Print payload is empty for file '{fileName}'.");
+            }
+
+            return new PrintJob {
+                FileName = fileName,
+                SourcePath = filePath,
+                RawPayload = rawPayload,
+                RequestedPrinter = requestedPrinter,
+                Metadata = new Dictionary<string, string> {
+                    ["format"] = string.IsNullOrWhiteSpace(extension) ? "(no-extension)" : extension,
+                    ["mode"] = "raw",
+                    ["requestedPrinter"] = requestedPrinter ?? string.Empty
+                }
+            };
+        }
+
         var content = File.ReadAllText(filePath).Trim();
         if (string.IsNullOrWhiteSpace(content)) {
             throw new InvalidDataException($"ETQ payload is empty for file '{fileName}'.");
@@ -30,19 +51,20 @@ public sealed class EtqPrintJobParser : IPrintJobParser {
 
         return new PrintJob {
             FileName = fileName,
-            SourcePath = filePath,
-            RawPayload = payload,
-            RequestedPrinter = requestedPrinter,
-            Metadata = new Dictionary<string, string> {
-                ["format"] = ".etq",
-                ["tokenCount"] = byteTokens.Length.ToString(),
-                ["requestedPrinter"] = requestedPrinter ?? string.Empty
-            }
-        };
+                SourcePath = filePath,
+                RawPayload = payload,
+                RequestedPrinter = requestedPrinter,
+                Metadata = new Dictionary<string, string> {
+                    ["format"] = ".etq",
+                    ["mode"] = "tokenized-bytes",
+                    ["tokenCount"] = byteTokens.Length.ToString(),
+                    ["requestedPrinter"] = requestedPrinter ?? string.Empty
+                }
+            };
     }
 
     private static string? TryExtractRequestedPrinter(string fileName) {
-        // MVP convention: <job-name>__printer=<PrinterName>.etq
+        // Convention: <job-name>__printer=<PrinterName>.<extension>
         const string marker = "__printer=";
         var markerIndex = fileName.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
         if (markerIndex < 0) {

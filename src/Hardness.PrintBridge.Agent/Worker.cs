@@ -104,7 +104,7 @@ public class Worker(
     }
 
     private async Task<BatchResult> ProcessInboxBatchAsync(CancellationToken stoppingToken) {
-        var files = Directory.GetFiles(_options.WatchPath, "*.etq", SearchOption.TopDirectoryOnly);
+        var files = Directory.GetFiles(_options.WatchPath, "*", SearchOption.TopDirectoryOnly);
         var result = new BatchResult();
 
         if (files.Length == 0) {
@@ -126,7 +126,7 @@ public class Worker(
     }
 
     private async Task<BatchResult> ProcessProcessingBatchAsync(CancellationToken stoppingToken) {
-        var files = Directory.GetFiles(_options.ProcessingPath, "*.etq", SearchOption.TopDirectoryOnly);
+        var files = Directory.GetFiles(_options.ProcessingPath, "*", SearchOption.TopDirectoryOnly);
         var result = new BatchResult();
 
         if (files.Length == 0) {
@@ -189,7 +189,7 @@ public class Worker(
         }
 
         try {
-            var printJob = printJobParser.ParseEtq(processingPath);
+            var printJob = printJobParser.Parse(processingPath);
             requestedPrinter = printJob.RequestedPrinter ?? requestedPrinter;
             var resolvedPrinter = printerResolver.Resolve(printJob);
             usedPrinter = resolvedPrinter;
@@ -229,7 +229,7 @@ public class Worker(
         } catch (InvalidDataException ex) {
             var errorPath = Path.Combine(_options.ErrorPath, fileName);
             SafeMoveToError(processingPath, errorPath);
-            logger.LogError(ex, "Invalid ETQ payload for '{FileName}'.", fileName);
+            logger.LogError(ex, "Invalid print payload for '{FileName}'.", fileName);
             await NotifyCallbackSafeAsync(new PrintCallbackRequest {
                 FileName = fileName,
                 Status = "error",
