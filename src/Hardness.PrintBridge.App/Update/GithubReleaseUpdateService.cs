@@ -94,19 +94,15 @@ public sealed class GithubReleaseUpdateService(HttpClient httpClient) : IUpdateS
     }
 
     private static string CopyUpdaterBundleToTemp() {
-        var updaterFiles = Directory.GetFiles(AppContext.BaseDirectory, "Hardness.PrintBridge.Updater*");
-        if (updaterFiles.Length == 0) {
-            updaterFiles = FindDevelopmentUpdaterFiles();
-        }
-
-        if (updaterFiles.Length == 0) {
+        var updaterSourceDirectory = ResolveUpdaterSourceDirectory();
+        if (updaterSourceDirectory is null) {
             throw new FileNotFoundException("Updater bundle was not found.");
         }
 
         var workspacePath = Path.Combine(RuntimePaths.GetUpdateWorkspacePath(), "updater");
         Directory.CreateDirectory(workspacePath);
 
-        foreach (var filePath in updaterFiles) {
+        foreach (var filePath in Directory.GetFiles(updaterSourceDirectory, "*", SearchOption.TopDirectoryOnly)) {
             var destinationPath = Path.Combine(workspacePath, Path.GetFileName(filePath));
             File.Copy(filePath, destinationPath, overwrite: true);
         }
@@ -119,7 +115,11 @@ public sealed class GithubReleaseUpdateService(HttpClient httpClient) : IUpdateS
         return executablePath;
     }
 
-    private static string[] FindDevelopmentUpdaterFiles() {
+    private static string? ResolveUpdaterSourceDirectory() {
+        if (File.Exists(Path.Combine(AppContext.BaseDirectory, "Hardness.PrintBridge.Updater.exe"))) {
+            return AppContext.BaseDirectory;
+        }
+
         var candidates = new[] {
             Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\Hardness.PrintBridge.Updater\bin\Debug\net10.0-windows")),
             Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\Hardness.PrintBridge.Updater\bin\Release\net10.0-windows"))
@@ -127,14 +127,13 @@ public sealed class GithubReleaseUpdateService(HttpClient httpClient) : IUpdateS
 
         foreach (var directoryPath in candidates) {
             if (Directory.Exists(directoryPath)) {
-                var files = Directory.GetFiles(directoryPath, "Hardness.PrintBridge.Updater*");
-                if (files.Length > 0) {
-                    return files;
+                if (File.Exists(Path.Combine(directoryPath, "Hardness.PrintBridge.Updater.exe"))) {
+                    return directoryPath;
                 }
             }
         }
 
-        return [];
+        return null;
     }
 
     private static string Quote(string value) {
