@@ -15,12 +15,31 @@ public static class RuntimePaths {
         return Path.Combine(GetProgramDataRoot(), "status", "agent-status.json");
     }
 
-    public static string GetAgentConfigurationPath() {
+    public static string GetLegacyAgentConfigurationPath() {
         return Path.Combine(GetProgramDataRoot(), "config", "agent-settings.json");
     }
 
-    public static string GetAppSettingsPath() {
+    public static string GetLegacyAppSettingsPath() {
         return Path.Combine(GetAppDataRoot(), "app", "settings.json");
+    }
+
+    public static string GetGlobalAppSettingsPath(string? baseDirectory = null) {
+        if (!string.IsNullOrWhiteSpace(baseDirectory)) {
+            return Path.Combine(baseDirectory, "appsettings.json");
+        }
+
+        var installedPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        if (File.Exists(installedPath)) {
+            return installedPath;
+        }
+
+        var solutionRoot = TryFindSolutionRoot(AppContext.BaseDirectory)
+            ?? TryFindSolutionRoot(Environment.CurrentDirectory);
+        if (!string.IsNullOrWhiteSpace(solutionRoot)) {
+            return Path.Combine(solutionRoot, "appsettings.json");
+        }
+
+        return installedPath;
     }
 
     public static string GetUpdateWorkspacePath() {

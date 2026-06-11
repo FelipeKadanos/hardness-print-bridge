@@ -11,23 +11,31 @@ using Hardness.PrintBridge.Contracts.Runtime;
 using Microsoft.Extensions.FileProviders;
 using Serilog.Events;
 using System.Threading;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Hardness.PrintBridge.Contracts.Configuration;
 
 using var singleInstanceMutex = new Mutex(initiallyOwned: true, @"Global\HardnessPrintBridgeAgent", out var createdNew);
 if (!createdNew) {
     return;
 }
 
-var builder = Host.CreateApplicationBuilder(args);
-builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
-var agentConfigurationPath = RuntimePaths.GetAgentConfigurationPath();
-var agentConfigurationDirectory = Path.GetDirectoryName(agentConfigurationPath);
-if (!string.IsNullOrWhiteSpace(agentConfigurationDirectory)) {
-    builder.Configuration.AddJsonFile(
-        new PhysicalFileProvider(agentConfigurationDirectory),
-        Path.GetFileName(agentConfigurationPath),
-        optional: true,
-        reloadOnChange: true);
-}
+var globalAppSettingsPath = RuntimePaths.GetGlobalAppSettingsPath();
+EnsureAgentGlobalAppSettings(globalAppSettingsPath);
+
+var appSettingsDirectory = Path.GetDirectoryName(globalAppSettingsPath)
+    ?? AppContext.BaseDirectory;
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings {
+    Args = args,
+    ContentRootPath = appSettingsDirectory
+});
+builder.Configuration.Sources.Clear();
+builder.Configuration.AddJsonFile(
+    new PhysicalFileProvider(appSettingsDirectory),
+    Path.GetFileName(globalAppSettingsPath),
+    optional: false,
+    reloadOnChange: true);
+builder.Configuration.AddEnvironmentVariables();
 builder.Services.AddWindowsService(options => {
     options.ServiceName = "Hardness Print Bridge Agent";
 });
@@ -100,3 +108,30 @@ host.Services.GetRequiredService<ILoggerFactory>()
         agentLogPath);
 
 host.Run();
+
+static void EnsureAgentGlobalAppSettings(string globalAppSettingsPath) {
+    if (File.Exists(globalAppSettingsPath)) {
+        return;
+    }
+
+    var directoryPath = Path.GetDirectoryName(globalAppSettingsPath);
+    if (!string.IsNullOrWhiteSpace(directoryPath)) {
+        Directory.CreateDirectory(directoryPath);
+    }
+
+    var document = new JsonObject();
+    var legacyConfigurationPath = RuntimePaths.GetLegacyAgentConfigurationPath();
+    if (File.Exists(legacyConfigurationPath)) {
+        var legacyFile = JsonSerializer.Deserialize<AgentConfigurationFile>(File.ReadAllText(legacyConfigurationPath));
+        document["PrintBridge"] = JsonSerializer.SerializeToNode(
+            AgentConfigurationModel.FromFile(legacyFile).ToSection());
+    } else {
+        document["PrintBridge"] = JsonSerializer.SerializeToNode(new AgentConfigurationModel().ToSection());
+    }
+
+    File.WriteAllText(
+        globalAppSettingsPath,
+        document.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web) {
+            WriteIndented = true
+        }));
+}

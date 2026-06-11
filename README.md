@@ -45,9 +45,11 @@ dotnet run --project src/Hardness.PrintBridge.Agent
 
 ## Configuração local
 
-```powershell
-Copy-Item src/Hardness.PrintBridge.Agent/appsettings.Local.example.json src/Hardness.PrintBridge.Agent/appsettings.Local.json
-```
+- em desenvolvimento, a fonte unica de configuracao fica em [appsettings.json](./appsettings.json)
+- na instalacao publicada, a fonte unica fica em `DIR\appsettings.json`
+- o arquivo concentra duas secoes principais:
+  - `PrintBridge`: configuracao do Agent
+  - `App`: configuracao do App desktop
 
 ### Modo 1: fila local (filesystem)
 

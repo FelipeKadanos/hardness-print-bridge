@@ -20,6 +20,7 @@ try {
 
     logger.Info($"Extracting package '{arguments.PackagePath}' to '{extractPath}'.");
     ZipFile.ExtractToDirectory(arguments.PackagePath, extractPath, overwriteFiles: true);
+    PreserveInstalledAppSettings(arguments.TargetDirectory, extractPath, logger);
 
     logger.Info($"Applying update to '{arguments.TargetDirectory}'.");
     CopyDirectory(extractPath, arguments.TargetDirectory, overwrite: true);
@@ -128,6 +129,18 @@ static void RestartApplication(string? executablePath, UpdaterLogger logger) {
         UseShellExecute = true,
         WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory
     });
+}
+
+static void PreserveInstalledAppSettings(string targetDirectory, string extractDirectory, UpdaterLogger logger) {
+    var installedAppSettingsPath = Path.Combine(targetDirectory, "appsettings.json");
+    var extractedAppSettingsPath = Path.Combine(extractDirectory, "appsettings.json");
+
+    if (!File.Exists(installedAppSettingsPath) || !File.Exists(extractedAppSettingsPath)) {
+        return;
+    }
+
+    logger.Info("Preserving installed appsettings.json during update.");
+    File.Copy(installedAppSettingsPath, extractedAppSettingsPath, overwrite: true);
 }
 
 static void CopyDirectory(string sourceDirectory, string destinationDirectory, bool overwrite = false) {

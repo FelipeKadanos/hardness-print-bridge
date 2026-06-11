@@ -17,6 +17,7 @@ public sealed class MainForm : Form {
     private readonly ComboBox _printerComboBox;
     private readonly Label _logsSourceValueLabel;
     private readonly TextBox _logsTextBox;
+    private AgentConfigurationModel _currentConfiguration = new();
     private bool _allowClose;
 
     public event EventHandler<bool>? StartWithWindowsChanged;
@@ -91,6 +92,7 @@ public sealed class MainForm : Form {
     }
 
     public void ApplyAgentConfiguration(AgentConfigurationModel configuration, IReadOnlyList<string> printers) {
+        _currentConfiguration = configuration;
         _queueRootPathTextBox.Text = configuration.QueueRootPath;
         _apiAuthTokenTextBox.Text = configuration.ApiAuthToken;
         _remoteListUrlTextBox.Text = configuration.RemoteListUrl;
@@ -285,16 +287,21 @@ public sealed class MainForm : Form {
     }
 
     private void SaveConfiguration() {
-        var configuration = new AgentConfigurationModel {
-            QueueRootPath = _queueRootPathTextBox.Text,
+        var queueRootPath = _queueRootPathTextBox.Text.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var configuration = _currentConfiguration with {
+            QueueRootPath = queueRootPath,
+            WatchPath = Path.Combine(queueRootPath, AgentConfigurationDefaults.DefaultInboxFolderName),
+            ProcessingPath = Path.Combine(queueRootPath, AgentConfigurationDefaults.DefaultProcessingFolderName),
+            PrintedPath = Path.Combine(queueRootPath, AgentConfigurationDefaults.DefaultPrintedFolderName),
+            ErrorPath = Path.Combine(queueRootPath, AgentConfigurationDefaults.DefaultErrorFolderName),
             ApiAuthToken = _apiAuthTokenTextBox.Text,
             RemoteListUrl = _remoteListUrlTextBox.Text,
             RemoteDownloadUrlTemplate = _remoteDownloadUrlTemplateTextBox.Text,
             HardnessCallbackUrl = _hardnessCallbackUrlTextBox.Text,
-            DefaultPrinterName = _printerComboBox.SelectedItem?.ToString() ?? _printerComboBox.Text,
-            RemoteSourceEnabled = true
+            DefaultPrinterName = _printerComboBox.SelectedItem?.ToString() ?? _printerComboBox.Text
         };
 
+        _currentConfiguration = configuration;
         SaveAgentConfigurationRequested?.Invoke(this, new AgentConfigurationSaveRequestedEventArgs(configuration));
     }
 
