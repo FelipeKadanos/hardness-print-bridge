@@ -96,9 +96,8 @@ var
 begin
   Result := '';
   if FileExists(FilePath) then begin
-    if LoadStringFromFile(FilePath, FileContents) then begin
-      Result := FileContents;
-    end;
+    LoadStringFromFile(FilePath, FileContents);
+    Result := FileContents;
   end;
 end;
 
