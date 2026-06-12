@@ -57,6 +57,10 @@ internal static class UnifiedAppSettingsDocumentStore {
 
     private static async Task SaveDocumentAsync(JsonObject document, CancellationToken cancellationToken) {
         var path = RuntimePaths.GetGlobalAppSettingsPath();
+        if (string.Equals(path, RuntimePaths.GetSharedAppSettingsPath(), StringComparison.OrdinalIgnoreCase)) {
+            RuntimePaths.EnsureSharedConfigDirectoryExists();
+        }
+
         var directoryPath = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(directoryPath)) {
             Directory.CreateDirectory(directoryPath);
@@ -72,6 +76,17 @@ internal static class UnifiedAppSettingsDocumentStore {
     }
 
     private static async Task<JsonObject?> TryBuildMigratedDocumentAsync(CancellationToken cancellationToken) {
+        var installedAppSettingsPath = RuntimePaths.GetInstalledAppSettingsPath();
+        var globalAppSettingsPath = RuntimePaths.GetGlobalAppSettingsPath();
+        if (!string.Equals(installedAppSettingsPath, globalAppSettingsPath, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(installedAppSettingsPath)) {
+            await using var stream = File.OpenRead(installedAppSettingsPath);
+            var node = await JsonNode.ParseAsync(stream, cancellationToken: cancellationToken);
+            if (node is JsonObject installedDocument) {
+                return installedDocument;
+            }
+        }
+
         var document = new JsonObject();
         var migrated = false;
 

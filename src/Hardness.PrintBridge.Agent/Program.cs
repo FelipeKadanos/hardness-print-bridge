@@ -74,6 +74,7 @@ builder.Services.AddSerilog((services, configuration) => {
 builder.Services.AddSingleton<IPrintJobParser, EtqPrintJobParser>();
 builder.Services.AddSingleton<IPrinterResolver, WindowsPrinterResolver>();
 builder.Services.AddSingleton<IRawPrinterClient, WindowsRawPrinterClient>();
+builder.Services.AddSingleton<IDocumentPrintFallbackClient, WindowsDocumentPrintFallbackClient>();
 builder.Services.AddSingleton<AgentStatusWriter>();
 builder.Services.AddHttpClient<IHardnessCallbackClient, HardnessCallbackClient>();
 builder.Services
@@ -114,9 +115,20 @@ static void EnsureAgentGlobalAppSettings(string globalAppSettingsPath) {
         return;
     }
 
+    if (string.Equals(globalAppSettingsPath, RuntimePaths.GetSharedAppSettingsPath(), StringComparison.OrdinalIgnoreCase)) {
+        RuntimePaths.EnsureSharedConfigDirectoryExists();
+    }
+
     var directoryPath = Path.GetDirectoryName(globalAppSettingsPath);
     if (!string.IsNullOrWhiteSpace(directoryPath)) {
         Directory.CreateDirectory(directoryPath);
+    }
+
+    var installedAppSettingsPath = RuntimePaths.GetInstalledAppSettingsPath();
+    if (!string.Equals(installedAppSettingsPath, globalAppSettingsPath, StringComparison.OrdinalIgnoreCase)
+        && File.Exists(installedAppSettingsPath)) {
+        File.Copy(installedAppSettingsPath, globalAppSettingsPath, overwrite: false);
+        return;
     }
 
     var document = new JsonObject();

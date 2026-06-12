@@ -1,3 +1,6 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
+
 namespace Hardness.PrintBridge.Contracts.Runtime;
 
 public static class RuntimePaths {
@@ -23,14 +26,17 @@ public static class RuntimePaths {
         return Path.Combine(GetAppDataRoot(), "app", "settings.json");
     }
 
+    public static string GetInstalledAppSettingsPath(string? baseDirectory = null) {
+        return Path.Combine(baseDirectory ?? AppContext.BaseDirectory, "appsettings.json");
+    }
+
+    public static string GetSharedAppSettingsPath() {
+        return Path.Combine(GetProgramDataRoot(), "config", "appsettings.json");
+    }
+
     public static string GetGlobalAppSettingsPath(string? baseDirectory = null) {
         if (!string.IsNullOrWhiteSpace(baseDirectory)) {
             return Path.Combine(baseDirectory, "appsettings.json");
-        }
-
-        var installedPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-        if (File.Exists(installedPath)) {
-            return installedPath;
         }
 
         var solutionRoot = TryFindSolutionRoot(AppContext.BaseDirectory)
@@ -39,7 +45,7 @@ public static class RuntimePaths {
             return Path.Combine(solutionRoot, "appsettings.json");
         }
 
-        return installedPath;
+        return GetSharedAppSettingsPath();
     }
 
     public static string GetUpdateWorkspacePath() {
@@ -52,6 +58,16 @@ public static class RuntimePaths {
 
     public static string GetAgentLogPath(string? baseDirectory = null) {
         return Path.Combine(GetAgentLogDirectory(baseDirectory), "agent.log");
+    }
+
+    public static void EnsureSharedConfigDirectoryExists() {
+        var directoryPath = Path.GetDirectoryName(GetSharedAppSettingsPath());
+        if (string.IsNullOrWhiteSpace(directoryPath)) {
+            return;
+        }
+
+        Directory.CreateDirectory(directoryPath);
+        TryGrantBuiltinUsersModify(directoryPath);
     }
 
     private static string GetAgentRuntimeRoot(string? baseDirectory = null) {
@@ -80,5 +96,27 @@ public static class RuntimePaths {
         }
 
         return null;
+    }
+
+    private static void TryGrantBuiltinUsersModify(string directoryPath) {
+        if (!OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        try {
+            var directoryInfo = new DirectoryInfo(directoryPath);
+            var security = directoryInfo.GetAccessControl();
+            var builtinUsersSid = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+            var modifyRule = new FileSystemAccessRule(
+                builtinUsersSid,
+                FileSystemRights.Modify | FileSystemRights.Synchronize,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow);
+
+            security.AddAccessRule(modifyRule);
+            directoryInfo.SetAccessControl(security);
+        } catch {
+        }
     }
 }

@@ -40,6 +40,9 @@ Name: "autorunapp"; Description: "Iniciar automaticamente com o Windows"; GroupD
 [Files]
 Source: "..\artifacts\package\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Dirs]
+Name: "{commonappdata}\HardnessPrintBridge\config"; Permissions: users-modify
+
 [Icons]
 Name: "{autodesktop}\Hardness Print Bridge"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{group}\Hardness Print Bridge"; Filename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon
@@ -55,6 +58,10 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Executar o aplicativo ao conclu
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\uninstall-service.ps1"""; Flags: runhidden waituntilterminated
 
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\*"
+Type: dirifempty; Name: "{app}"
+
 [Code]
 var
   QueueRootPage: TInputDirWizardPage;
@@ -63,6 +70,238 @@ var
   PrinterPage: TWizardPage;
   PrinterComboBox: TNewComboBox;
   PrinterNames: TStringList;
+  UninstallDataRootPath: string;
+  UninstallDeleteDataRoot: Boolean;
+
+function FindTextFrom(const Needle, Haystack: string; const StartIndex: Integer): Integer;
+var
+  Offset: Integer;
+begin
+  if StartIndex <= 1 then begin
+    Result := Pos(Needle, Haystack);
+    exit;
+  end;
+
+  Offset := Pos(Needle, Copy(Haystack, StartIndex, MaxInt));
+  if Offset = 0 then begin
+    Result := 0;
+  end else begin
+    Result := StartIndex + Offset - 1;
+  end;
+end;
+
+function ReadTextFileOrEmpty(const FilePath: string): string;
+begin
+  Result := '';
+  if FileExists(FilePath) then begin
+    LoadStringFromFile(FilePath, Result);
+  end;
+end;
+
+function UnescapeJsonString(const Value: string): string;
+var
+  Index: Integer;
+  Ch: string;
+begin
+  Result := '';
+  Index := 1;
+
+  while Index <= Length(Value) do begin
+    Ch := Copy(Value, Index, 1);
+    if (Ch = '\') and (Index < Length(Value)) then begin
+      Inc(Index);
+      Ch := Copy(Value, Index, 1);
+
+      if (Ch = '\') or (Ch = '/') or (Ch = '"') then begin
+        Result := Result + Ch;
+      end else if Ch = 'n' then begin
+        Result := Result + #10;
+      end else if Ch = 'r' then begin
+        Result := Result + #13;
+      end else if Ch = 't' then begin
+        Result := Result + #9;
+      end else begin
+        Result := Result + Ch;
+      end;
+    end else begin
+      Result := Result + Ch;
+    end;
+
+    Inc(Index);
+  end;
+end;
+
+function ExtractJsonStringProperty(const JsonText: string; const PropertyName: string): string;
+var
+  LowerText: string;
+  PropertyPattern: string;
+  PropertyPos: Integer;
+  ColonPos: Integer;
+  StartQuotePos: Integer;
+  EndQuotePos: Integer;
+  Index: Integer;
+  Escaped: Boolean;
+begin
+  Result := '';
+  if JsonText = '' then begin
+    exit;
+  end;
+
+  LowerText := LowerCase(JsonText);
+  PropertyPattern := '"' + LowerCase(PropertyName) + '"';
+  PropertyPos := Pos(PropertyPattern, LowerText);
+  if PropertyPos = 0 then begin
+    exit;
+  end;
+
+  ColonPos := FindTextFrom(':', JsonText, PropertyPos + Length(PropertyPattern));
+  if ColonPos = 0 then begin
+    exit;
+  end;
+
+  StartQuotePos := FindTextFrom('"', JsonText, ColonPos + 1);
+  if StartQuotePos = 0 then begin
+    exit;
+  end;
+
+  EndQuotePos := 0;
+  Escaped := False;
+  for Index := StartQuotePos + 1 to Length(JsonText) do begin
+    if Escaped then begin
+      Escaped := False;
+    end else if Copy(JsonText, Index, 1) = '\' then begin
+      Escaped := True;
+    end else if Copy(JsonText, Index, 1) = '"' then begin
+      EndQuotePos := Index;
+      break;
+    end;
+  end;
+
+  if EndQuotePos = 0 then begin
+    exit;
+  end;
+
+  Result := UnescapeJsonString(Copy(JsonText, StartQuotePos + 1, EndQuotePos - StartQuotePos - 1));
+end;
+
+function TryGetConfiguredQueueRootPath(out QueueRootPath: string): Boolean;
+var
+  ConfigText: string;
+begin
+  QueueRootPath := '';
+
+  ConfigText := ReadTextFileOrEmpty(ExpandConstant('{commonappdata}\HardnessPrintBridge\config\appsettings.json'));
+  if ConfigText = '' then begin
+    ConfigText := ReadTextFileOrEmpty(ExpandConstant('{app}\appsettings.json'));
+  end;
+
+  QueueRootPath := ExtractJsonStringProperty(ConfigText, 'queueRootPath');
+  if QueueRootPath = '' then begin
+    QueueRootPath := ExtractJsonStringProperty(ConfigText, 'QueueRootPath');
+  end;
+
+  Result := QueueRootPath <> '';
+end;
+
+function IsSafeDataRootPath(const CandidateRootPath: string; const QueueRootPath: string): Boolean;
+var
+  NormalizedRootPath: string;
+  NormalizedQueueRootPath: string;
+begin
+  Result := False;
+
+  NormalizedRootPath := RemoveBackslashUnlessRoot(CandidateRootPath);
+  NormalizedQueueRootPath := RemoveBackslashUnlessRoot(QueueRootPath);
+
+  if (NormalizedRootPath = '') or (NormalizedQueueRootPath = '') then begin
+    exit;
+  end;
+
+  if CompareText(AddBackslash(ExtractFileDrive(NormalizedRootPath)), AddBackslash(NormalizedRootPath)) = 0 then begin
+    exit;
+  end;
+
+  if CompareText(ExtractFileName(NormalizedRootPath), 'Hardness-Print-Brige') <> 0 then begin
+    exit;
+  end;
+
+  Result :=
+    CompareText(
+      Copy(AddBackslash(NormalizedQueueRootPath), 1, Length(AddBackslash(NormalizedRootPath))),
+      AddBackslash(NormalizedRootPath)) = 0;
+end;
+
+function TryResolveUninstallDataRootPath(out DataRootPath: string): Boolean;
+var
+  QueueRootPath: string;
+  CandidateRootPath: string;
+begin
+  if not TryGetConfiguredQueueRootPath(QueueRootPath) then begin
+    QueueRootPath := '{#MyDefaultQueueRootPath}';
+  end;
+
+  QueueRootPath := RemoveBackslashUnlessRoot(QueueRootPath);
+  CandidateRootPath := RemoveBackslashUnlessRoot(ExtractFileDir(QueueRootPath));
+
+  if not IsSafeDataRootPath(CandidateRootPath, QueueRootPath) then begin
+    DataRootPath := '';
+    Result := False;
+    exit;
+  end;
+
+  DataRootPath := CandidateRootPath;
+  Result := True;
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  UninstallDeleteDataRoot := False;
+  UninstallDataRootPath := '';
+
+  if TryResolveUninstallDataRootPath(UninstallDataRootPath) then begin
+    Log(Format('Resolved uninstall data root to "%s".', [UninstallDataRootPath]));
+  end else begin
+    Log('Did not resolve a safe uninstall data root path; data deletion will be skipped.');
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  PromptResult: Integer;
+begin
+  if CurUninstallStep <> usPostUninstall then begin
+    exit;
+  end;
+
+  if (UninstallDataRootPath = '') or not DirExists(UninstallDataRootPath) then begin
+    exit;
+  end;
+
+  if UninstallSilent then begin
+    Log('Silent uninstall detected; keeping HPB data directory.');
+    exit;
+  end;
+
+  PromptResult := MsgBox(
+    'Deseja remover tambem os dados do Hardness Print Bridge em:' + #13#10 + #13#10 +
+    UninstallDataRootPath + #13#10 + #13#10 +
+    'Isso apagará fila, arquivos processados e logs.',
+    mbConfirmation,
+    MB_YESNO);
+
+  if PromptResult <> IDYES then begin
+    Log('User chose to keep the HPB data directory.');
+    exit;
+  end;
+
+  UninstallDeleteDataRoot := True;
+  if DelTree(UninstallDataRootPath, True, True, True) then begin
+    Log(Format('Deleted HPB data directory "%s".', [UninstallDataRootPath]));
+  end else begin
+    Log(Format('Failed to fully delete HPB data directory "%s".', [UninstallDataRootPath]));
+  end;
+end;
 
 procedure PopulatePrinterList;
 var
