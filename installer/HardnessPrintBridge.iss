@@ -91,10 +91,14 @@ begin
 end;
 
 function ReadTextFileOrEmpty(const FilePath: string): string;
+var
+  FileContents: string;
 begin
   Result := '';
   if FileExists(FilePath) then begin
-    LoadStringFromFile(FilePath, Result);
+    if LoadStringFromFile(FilePath, FileContents) then begin
+      Result := FileContents;
+    end;
   end;
 end;
 
