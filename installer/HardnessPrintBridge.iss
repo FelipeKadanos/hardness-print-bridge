@@ -71,7 +71,6 @@ var
   PrinterComboBox: TNewComboBox;
   PrinterNames: TStringList;
   UninstallDataRootPath: string;
-  UninstallDeleteDataRoot: Boolean;
 
 function FindTextFrom(const Needle, Haystack: string; const StartIndex: Integer): Integer;
 var
@@ -92,12 +91,17 @@ end;
 
 function ReadTextFileOrEmpty(const FilePath: string): string;
 var
-  FileContents: string;
+  FileLines: TStringList;
 begin
   Result := '';
   if FileExists(FilePath) then begin
-    LoadStringFromFile(FilePath, FileContents);
-    Result := FileContents;
+    FileLines := TStringList.Create;
+    try
+      FileLines.LoadFromFile(FilePath);
+      Result := FileLines.Text;
+    finally
+      FileLines.Free;
+    end;
   end;
 end;
 
@@ -187,7 +191,7 @@ begin
   Result := UnescapeJsonString(Copy(JsonText, StartQuotePos + 1, EndQuotePos - StartQuotePos - 1));
 end;
 
-function TryGetConfiguredQueueRootPath(out QueueRootPath: string): Boolean;
+function TryGetConfiguredQueueRootPath(var QueueRootPath: string): Boolean;
 var
   ConfigText: string;
 begin
@@ -234,7 +238,7 @@ begin
       AddBackslash(NormalizedRootPath)) = 0;
 end;
 
-function TryResolveUninstallDataRootPath(out DataRootPath: string): Boolean;
+function TryResolveUninstallDataRootPath(var DataRootPath: string): Boolean;
 var
   QueueRootPath: string;
   CandidateRootPath: string;
@@ -259,7 +263,6 @@ end;
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
-  UninstallDeleteDataRoot := False;
   UninstallDataRootPath := '';
 
   if TryResolveUninstallDataRootPath(UninstallDataRootPath) then begin
@@ -298,7 +301,6 @@ begin
     exit;
   end;
 
-  UninstallDeleteDataRoot := True;
   if DelTree(UninstallDataRootPath, True, True, True) then begin
     Log(Format('Deleted HPB data directory "%s".', [UninstallDataRootPath]));
   end else begin
